@@ -1218,7 +1218,7 @@ export default function App() {
   }, [activeView, detailViewItem?.placeId, token]);
 
   useEffect(() => {
-    if (false && !token) {
+    if (!token) {
       setBooting(false);
       return;
     }
