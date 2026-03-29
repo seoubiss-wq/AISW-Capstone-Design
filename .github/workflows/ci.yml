@@ -1,6 +1,7 @@
 name: CI
 
 on:
+  workflow_dispatch:
   push:
     branches:
       - master
@@ -12,6 +13,8 @@ on:
 
 jobs:
   lint-and-test:
+    permissions:
+      contents: read
     runs-on: ubuntu-latest
 
     steps:
@@ -44,3 +47,72 @@ jobs:
 
       - name: Run tests
         run: npm test
+
+  build-pages:
+    if: github.event_name == 'push'
+    needs: lint-and-test
+    permissions:
+      contents: read
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
+
+      - name: Configure GitHub Pages
+        uses: actions/configure-pages@v5
+
+      - name: Validate frontend deploy settings
+        env:
+          REACT_APP_API_BASE_URL: ${{ vars.REACT_APP_API_BASE_URL }}
+          REACT_APP_GOOGLE_MAPS_API_KEY: ${{ secrets.REACT_APP_GOOGLE_MAPS_API_KEY }}
+          REACT_APP_GOOGLE_MAPS_MAP_ID: ${{ vars.REACT_APP_GOOGLE_MAPS_MAP_ID }}
+        run: |
+          test -n "$REACT_APP_API_BASE_URL" || { echo "Missing repository variable REACT_APP_API_BASE_URL"; exit 1; }
+          test -n "$REACT_APP_GOOGLE_MAPS_API_KEY" || { echo "Missing repository secret REACT_APP_GOOGLE_MAPS_API_KEY"; exit 1; }
+          test -n "$REACT_APP_GOOGLE_MAPS_MAP_ID" || { echo "Missing repository variable REACT_APP_GOOGLE_MAPS_MAP_ID"; exit 1; }
+
+      - name: Install frontend dependencies
+        working-directory: frontend
+        run: npm ci
+
+      - name: Build frontend
+        working-directory: frontend
+        env:
+          PUBLIC_URL: .
+          REACT_APP_API_BASE_URL: ${{ vars.REACT_APP_API_BASE_URL }}
+          REACT_APP_GOOGLE_MAPS_API_KEY: ${{ secrets.REACT_APP_GOOGLE_MAPS_API_KEY }}
+          REACT_APP_GOOGLE_MAPS_MAP_ID: ${{ vars.REACT_APP_GOOGLE_MAPS_MAP_ID }}
+        run: npm run build
+
+      - name: Add SPA fallback page
+        run: cp frontend/build/index.html frontend/build/404.html
+
+      - name: Upload GitHub Pages artifact
+        uses: actions/upload-pages-artifact@v4
+        with:
+          path: frontend/build
+
+  deploy-pages:
+    if: github.event_name == 'push'
+    needs: build-pages
+    permissions:
+      contents: read
+      pages: write
+      id-token: write
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+
+    steps:
+      - name: Deploy to GitHub Pages
+        id: deployment
+        uses: actions/deploy-pages@v4
