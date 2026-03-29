@@ -1,10 +1,13 @@
+import { useQuery } from "@tanstack/react-query";
 import { useEffect, useMemo, useRef, useState } from "react";
 import "./App.css";
 import GoogleRouteMap from "./GoogleRouteMap";
 import MapDirectionsPage from "./MapDirectionsPage";
+import { sessionBootstrapQueryOptions } from "./queries/session";
 
 const API_BASE_URL =
   process.env.REACT_APP_API_BASE_URL?.replace(/\/$/, "") || "http://localhost:5500";
+
 const AUTH_STORAGE_KEY = "tastepick.auth.token";
 const THEME_STORAGE_KEY = "tastepick.theme.mode";
 const LARGE_TEXT_STORAGE_KEY = "tastepick.accessibility.largeText";
@@ -907,6 +910,7 @@ export default function App() {
     darkMode: readStoredDarkMode(),
   });
   const [chatMessages, setChatMessages] = useState([]);
+  const sessionQuery = useQuery(sessionBootstrapQueryOptions(token));
 
   useEffect(() => {
     document.body.classList.toggle("theme-dark", accessibility.darkMode);
@@ -1222,6 +1226,49 @@ export default function App() {
       setBooting(false);
       return;
     }
+
+    setBooting(sessionQuery.isPending);
+  }, [token, sessionQuery.isPending]);
+
+  useEffect(() => {
+    if (!token || !sessionQuery.data) {
+      return;
+    }
+
+    setUser(sessionQuery.data.profile.user || null);
+    setFavorites(sessionQuery.data.favoritesPayload.favorites || []);
+    setHistory(sessionQuery.data.historyPayload.history || []);
+    setVisitHistory(sessionQuery.data.visitPayload.visits || []);
+    applyPreferencePayload(sessionQuery.data.preferencePayload);
+  }, [token, sessionQuery.data]);
+
+  useEffect(() => {
+    if (!token || !sessionQuery.error) {
+      return;
+    }
+
+    clearSession();
+    setBooting(false);
+    if (sessionQuery.error?.status === 401) {
+      setMessage(buildMessage("error", "濡쒓렇???몄뀡??留뚮즺?섏뿀?듬땲?? ?ㅼ떆 濡쒓렇?명빐 二쇱꽭??"));
+      return;
+    }
+    setMessage(
+      buildMessage(
+        "error",
+        sessionQuery.error?.status === 401
+          ? "濡쒓렇???몄뀡??留뚮즺?섏뿀?듬땲?? ?ㅼ떆 濡쒓렇?명빐 二쇱꽭??"
+          : sessionQuery.error.message,
+      ),
+    );
+  }, [token, sessionQuery.error]);
+
+  /* useEffect(() => {
+    if (!token) {
+      setBooting(false);
+      return;
+    }
+    return;
     let ignore = false;
 
     const loadSession = async () => {
@@ -1262,7 +1309,7 @@ export default function App() {
     return () => {
       ignore = true;
     };
-  }, [token]);
+  }, [token]); */
 
   function clearSession() {
     persistToken("");
@@ -1913,7 +1960,7 @@ export default function App() {
       {activeView === "ai" ? (
         <main className="page-fade mx-auto mt-24 flex h-[calc(100vh-100px)] max-w-screen-2xl gap-8 px-6 pb-10 md:px-8">
           {hasAiData ? (
-            <aside className="hidden w-80 shrink-0 flex-col gap-8 md:flex">
+            <aside className="hidden h-full min-h-0 w-80 shrink-0 flex-col gap-8 md:flex">
               {recentQuestions.length ? (
                 <section className="rounded-xl bg-surface-container-low p-6">
                   <h2 className="mb-4 text-lg font-bold text-on-surface-variant">최근 질문</h2>
@@ -1934,9 +1981,9 @@ export default function App() {
                   </div>
                 </section>
               ) : null}
-              <section className="flex flex-1 flex-col rounded-xl bg-surface-container-low p-6">
+              <section className="flex min-h-0 flex-1 flex-col rounded-xl bg-surface-container-low p-6">
                 <h2 className="mb-4 text-lg font-bold text-on-surface-variant">인기 태그</h2>
-                <div className="flex flex-wrap gap-2">
+                <div className="flex min-h-0 flex-1 flex-wrap content-start gap-2 overflow-y-auto pr-1">
                   {POPULAR_TAGS.map((tag) => (
                     <button
                       key={tag}
@@ -1948,7 +1995,7 @@ export default function App() {
                     </button>
                   ))}
                 </div>
-                <div className="mt-auto rounded-xl border border-primary/10 bg-primary/5 p-4">
+                <div className="mt-4 shrink-0 rounded-xl border border-primary/10 bg-primary/5 p-4">
                   <p className="mb-1 text-xs font-black uppercase tracking-wider text-primary">TastePick Premium</p>
                   <p className="text-sm font-medium text-on-surface-variant">
                     개인 맞춤 AI 분석과 시트별 추천을 한 번에 관리하세요.
