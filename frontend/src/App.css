@@ -247,6 +247,12 @@ body.theme-dark .route-canvas__veil {
   touch-action: pan-y;
 }
 
+.ai-quick-access-scroll {
+  overscroll-behavior: contain;
+  -webkit-overflow-scrolling: touch;
+  scrollbar-gutter: stable;
+}
+
 .route-marker {
   position: absolute;
   display: grid;

@@ -42,6 +42,40 @@ const NAV_ITEMS = [
 ];
 
 const CUISINE_OPTIONS = ["Han-sik", "Soup", "Italian", "Noodles", "Pastries"];
+export function buildAiQuickAccessItems(history = [], popularTags = []) {
+  const recentItems = history
+    .slice(0, 3)
+    .map((entry, index) => {
+      const query = String(entry?.query || "").trim();
+      if (!query) return null;
+
+      return {
+        id: `recent-${entry?.id || index}`,
+        kind: "recent",
+        title: query,
+        query,
+        meta: formatRelativeDate(entry?.createdAt, "recently"),
+      };
+    })
+    .filter(Boolean);
+
+  const tagItems = popularTags
+    .map((tag) => {
+      const title = String(tag || "").trim();
+      if (!title) return null;
+
+      return {
+        id: `tag-${title}`,
+        kind: "tag",
+        title,
+        query: title.replace(/^#/, ""),
+        meta: "popular tag",
+      };
+    })
+    .filter(Boolean);
+
+  return [...recentItems, ...tagItems];
+}
 const DIETARY_OPTIONS = ["땅콩 알레르기", "저염식", "유제품 제한", "밀가루 제한"];
 const FOLLOW_UP_CHIPS = ["더 가까운 곳", "주차 가능한 곳", "조용한 곳"];
 const POPULAR_TAGS = ["#한정식", "#조용한식당", "#건강식", "#강남맛집", "#발렛파킹"];
@@ -1038,7 +1072,7 @@ export default function App() {
   );
   const shouldUseDemoVisits = false;
   const recentQuestions = history.slice(0, 3);
-  const hasAiData = recentQuestions.length > 0 || chatMessages.length > 0;
+  const hasAiQuickAccess = recentQuestions.length > 0 || POPULAR_TAGS.length > 0;
   const favoriteNames = new Set(favorites.map((item) => item.name.toLowerCase()));
   const selectedCuisineTokens = splitTokens(preferences.favoriteCuisine);
   const dietaryTokens = splitTokens(preferences.avoidIngredients);
@@ -1912,9 +1946,74 @@ export default function App() {
 
       {activeView === "ai" ? (
         <main className="page-fade mx-auto mt-24 flex h-[calc(100vh-100px)] max-w-screen-2xl gap-8 px-6 pb-10 md:px-8">
-          {hasAiData ? (
-            <aside className="hidden w-80 shrink-0 flex-col gap-8 md:flex">
-              {recentQuestions.length ? (
+          {hasAiQuickAccess ? (
+            <aside className="hidden min-h-0 w-80 shrink-0 flex-col gap-8 md:flex">
+              <section className="flex min-h-0 flex-1 flex-col rounded-xl bg-surface-container-low p-6">
+                <div className="mb-4">
+                  <h2 className="text-lg font-bold text-on-surface-variant">빠른 탐색</h2>
+                  <p className="mt-1 text-sm text-stone-500">
+                    최근 질문과 인기 태그를 한곳에서 스크롤하며 다시 선택할 수 있어요.
+                  </p>
+                </div>
+                <div className="ai-quick-access-scroll flex min-h-0 flex-1 flex-col gap-4 overflow-y-auto pr-1">
+                  {recentQuestions.length ? (
+                    <div className="rounded-xl border border-outline-variant/20 bg-surface-container-lowest p-4">
+                      <h3 className="mb-3 text-sm font-black uppercase tracking-[0.2em] text-primary">최근 질문</h3>
+                      <div className="flex flex-col gap-3">
+                        {recentQuestions.map((entry) => (
+                          <button
+                            key={entry.id}
+                            className="rounded-lg bg-surface-container-low p-3 text-left transition-colors hover:bg-orange-50"
+                            type="button"
+                            onClick={() => runRecommendation(entry.query, "ai")}
+                          >
+                            <p className="text-sm font-semibold text-on-surface">{entry.query}</p>
+                            <span className="text-xs text-stone-500">
+                              {formatRelativeDate(entry.createdAt, "recently")}
+                            </span>
+                          </button>
+                        ))}
+                      </div>
+                    </div>
+                  ) : null}
+                  <div className="rounded-xl border border-outline-variant/20 bg-surface-container-lowest p-4">
+                    <h3 className="mb-3 text-sm font-black uppercase tracking-[0.2em] text-primary">인기 태그</h3>
+                    <div className="flex flex-wrap gap-2">
+                      {POPULAR_TAGS.map((tag) => (
+                        <button
+                          key={tag}
+                          className="rounded-full border border-outline-variant/20 bg-surface-container-low px-4 py-2 text-sm font-bold text-on-surface-variant"
+                          type="button"
+                          onClick={() => runRecommendation(tag.replace("#", ""), "ai")}
+                        >
+                          {tag}
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+                  {false && [].map((item) => (
+                    <button
+                      key={item.id}
+                      className="rounded-xl border border-outline-variant/20 bg-surface-container-lowest p-4 text-left transition-colors hover:bg-orange-50"
+                      type="button"
+                      onClick={() => runRecommendation(item.query, "ai")}
+                    >
+                      <span className="inline-flex rounded-full bg-primary/10 px-3 py-1 text-[11px] font-black uppercase tracking-[0.2em] text-primary">
+                        {item.kind === "recent" ? "최근 질문" : "인기 태그"}
+                      </span>
+                      <p className="mt-3 text-sm font-semibold text-on-surface">{item.title}</p>
+                      <span className="mt-2 block text-xs text-stone-500">{item.meta}</span>
+                    </button>
+                  ))}
+                </div>
+                <div className="mt-4 rounded-xl border border-primary/10 bg-primary/5 p-4">
+                  <p className="mb-1 text-xs font-black uppercase tracking-wider text-primary">TastePick Premium</p>
+                  <p className="text-sm font-medium text-on-surface-variant">
+                    개인 맞춤 AI 분석과 시트별 추천을 한 번에 관리하세요.
+                  </p>
+                </div>
+              </section>
+              {false ? (
                 <section className="rounded-xl bg-surface-container-low p-6">
                   <h2 className="mb-4 text-lg font-bold text-on-surface-variant">최근 질문</h2>
                   <div className="flex flex-col gap-3">
@@ -1934,7 +2033,7 @@ export default function App() {
                   </div>
                 </section>
               ) : null}
-              <section className="flex flex-1 flex-col rounded-xl bg-surface-container-low p-6">
+              <section className="hidden">
                 <h2 className="mb-4 text-lg font-bold text-on-surface-variant">인기 태그</h2>
                 <div className="flex flex-wrap gap-2">
                   {POPULAR_TAGS.map((tag) => (
