@@ -28,6 +28,7 @@ const DATABASE_URL = (
 const API_PUBLIC_ORIGIN = (
   process.env.API_PUBLIC_ORIGIN || "http://localhost:5500"
 ).replace(/\/$/, "");
+const PORT = Number(process.env.PORT || 5500);
 
 if (!DATABASE_URL) {
   throw new Error("DATABASE_URL 또는 SUPABASE_DB_URL이 필요합니다.");
@@ -2559,8 +2560,8 @@ app.use((error, req, res, next) => {
   });
 });
 
-app.listen(5500, () => {
-  console.log(`Server http://localhost:5500 (model: ${MODEL})`);
+app.listen(PORT, () => {
+  console.log(`Server http://localhost:${PORT} (model: ${MODEL})`);
   if (GOOGLE_MAPS_API_KEY) {
     console.log("Recommendation source: Google Places");
   } else {
