@@ -10,22 +10,15 @@
     "@testing-library/user-event": "^13.5.0",
     "react": "^19.2.4",
     "react-dom": "^19.2.4",
-    "react-scripts": "5.0.1",
     "web-vitals": "^2.1.4"
   },
   "scripts": {
-    "start": "react-scripts start",
-    "build": "react-scripts build",
-    "lint": "eslint \"src/**/*.{js,jsx}\"",
-    "test": "react-scripts test",
-    "test:ci": "react-scripts test --watchAll=false",
-    "eject": "react-scripts eject"
-  },
-  "eslintConfig": {
-    "extends": [
-      "react-app",
-      "react-app/jest"
-    ]
+    "start": "vite --host 0.0.0.0 --port 3000",
+    "dev": "vite --host 0.0.0.0 --port 3000",
+    "build": "vite build",
+    "lint": "eslint \"src/**/*.{js,jsx}\" vite.config.js",
+    "test": "vitest",
+    "test:ci": "vitest run"
   },
   "browserslist": {
     "production": [
@@ -40,8 +33,17 @@
     ]
   },
   "devDependencies": {
+    "@vitejs/plugin-react": "^5.0.4",
     "@tailwindcss/container-queries": "^0.1.1",
     "@tailwindcss/forms": "^0.5.11",
-    "tailwindcss": "^3.4.19"
+    "autoprefixer": "^10.4.21",
+    "eslint": "^8.57.1",
+    "eslint-plugin-react": "^7.37.5",
+    "eslint-plugin-react-hooks": "^5.2.0",
+    "jsdom": "^26.1.0",
+    "postcss": "^8.5.6",
+    "tailwindcss": "^3.4.19",
+    "vite": "^7.1.10",
+    "vitest": "^3.2.4"
   }
 }

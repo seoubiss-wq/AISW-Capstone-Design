@@ -6,7 +6,7 @@ import MapDirectionsPage from "./MapDirectionsPage";
 import { sessionBootstrapQueryOptions } from "./queries/session";
 
 const API_BASE_URL =
-  process.env.REACT_APP_API_BASE_URL?.replace(/\/$/, "") || "http://localhost:5500";
+  import.meta.env.REACT_APP_API_BASE_URL?.replace(/\/$/, "") || "http://localhost:5500";
 
 const AUTH_STORAGE_KEY = "tastepick.auth.token";
 const THEME_STORAGE_KEY = "tastepick.theme.mode";

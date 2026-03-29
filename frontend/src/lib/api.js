@@ -1,5 +1,5 @@
 const API_BASE_URL =
-  process.env.REACT_APP_API_BASE_URL?.replace(/\/$/, "") || "http://localhost:5500";
+  import.meta.env.REACT_APP_API_BASE_URL?.replace(/\/$/, "") || "http://localhost:5500";
 
 export async function readJson(response) {
   const contentType = response.headers.get("content-type") || "";
