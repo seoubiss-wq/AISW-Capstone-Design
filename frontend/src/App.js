@@ -1996,12 +1996,6 @@ export default function App() {
           {hasAiQuickAccess ? (
             <aside className="hidden h-full min-h-0 w-80 shrink-0 flex-col gap-8 md:flex">
               <section className="flex min-h-0 flex-1 flex-col rounded-xl bg-surface-container-low p-6">
-                <div className="mb-4">
-                  <h2 className="text-lg font-bold text-on-surface-variant">빠른 탐색</h2>
-                  <p className="mt-1 text-sm text-stone-500">
-                    최근 질문과 인기 태그를 한곳에서 스크롤하며 다시 선택할 수 있어요.
-                  </p>
-                </div>
                 <div className="ai-quick-access-scroll flex min-h-0 flex-1 flex-col gap-4 overflow-y-auto pr-1">
                   {recentQuestions.length ? (
                     <div className="rounded-xl border border-outline-variant/20 bg-surface-container-lowest p-4">
