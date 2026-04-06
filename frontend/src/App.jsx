@@ -264,6 +264,14 @@ function buildMessage(type, text) {
   return text ? { type, text } : null;
 }
 
+function getSpeechRecognitionCtor() {
+  if (typeof window === "undefined") {
+    return null;
+  }
+
+  return window.SpeechRecognition || window.webkitSpeechRecognition || null;
+}
+
 function normalizePreferences(preferences) {
   return { ...DEFAULT_PREFERENCES, ...(preferences || {}) };
 }
@@ -956,6 +964,9 @@ export default function App() {
   const placeDetailsCacheRef = useRef({});
   const chatScrollContainerRef = useRef(null);
   const chatScrollAnchorRef = useRef(null);
+  const voiceRecognitionRef = useRef(null);
+  const voiceStopRequestedRef = useRef(false);
+  const voiceErrorRef = useRef("");
   const [locationStatus, setLocationStatus] = useState("현재 위치를 아직 불러오지 않았습니다.");
   const [accessibility, setAccessibility] = useState({
     largeText: readStoredLargeText(),
@@ -964,6 +975,8 @@ export default function App() {
     darkMode: readStoredDarkMode(),
   });
   const [chatMessages, setChatMessages] = useState([]);
+  const [voiceListening, setVoiceListening] = useState(false);
+  const [voiceDraft, setVoiceDraft] = useState("");
   const sessionQuery = useQuery(sessionBootstrapQueryOptions(token));
 
   useEffect(() => {
@@ -983,6 +996,15 @@ export default function App() {
       document.body.classList.remove("theme-large-text");
     };
   }, [accessibility.largeText]);
+
+  useEffect(() => {
+    return () => {
+      try {
+        voiceRecognitionRef.current?.abort();
+      } catch {}
+      voiceRecognitionRef.current = null;
+    };
+  }, []);
 
   useEffect(() => {
     if (activeView !== "ai") return undefined;
@@ -1098,6 +1120,13 @@ export default function App() {
   const recentQuestions = history.slice(0, 3);
   const hasAiQuickAccess = recentQuestions.length > 0 || POPULAR_TAGS.length > 0;
   const favoriteNames = new Set(favorites.map((item) => item.name.toLowerCase()));
+  const homeVoiceCardBody = voiceListening
+    ? voiceDraft || "원하는 메뉴, 분위기, 위치를 말씀해 주세요."
+    : "말로 원하는 분위기와 메뉴를 알려주면 바로 추천을 시작합니다.";
+  const homeVoiceCardCta = voiceListening ? "듣는 중..." : "음성 검색 시작";
+  const chatInputPlaceholder = voiceListening
+    ? voiceDraft || "말씀을 듣고 있습니다..."
+    : "메시지를 입력하세요...";
   const selectedCuisineTokens = splitTokens(preferences.favoriteCuisine);
   const dietaryTokens = splitTokens(preferences.avoidIngredients);
   const visitEntries = useMemo(() => {
@@ -1596,6 +1625,162 @@ export default function App() {
     );
   }
 
+  function stopVoiceSearch() {
+    if (!voiceRecognitionRef.current) {
+      return;
+    }
+
+    voiceStopRequestedRef.current = true;
+
+    try {
+      voiceRecognitionRef.current.stop();
+    } catch {
+      voiceRecognitionRef.current = null;
+      setVoiceListening(false);
+      setVoiceDraft("");
+    }
+  }
+
+  function startVoiceSearch(targetView = "ai") {
+    if (loading) {
+      return;
+    }
+
+    if (voiceListening) {
+      stopVoiceSearch();
+      return;
+    }
+
+    const SpeechRecognition = getSpeechRecognitionCtor();
+    if (!SpeechRecognition) {
+      if (targetView === "ai") {
+        setActiveView("ai");
+      }
+      setMessage(
+        buildMessage(
+          "error",
+          "이 브라우저에서는 음성 입력을 사용할 수 없습니다. Chrome 또는 Edge에서 다시 시도해 주세요.",
+        ),
+      );
+      return;
+    }
+
+    let latestTranscript = "";
+    let finalTranscript = "";
+
+    const recognition = new SpeechRecognition();
+    voiceRecognitionRef.current = recognition;
+    voiceStopRequestedRef.current = false;
+    voiceErrorRef.current = "";
+    setVoiceDraft("");
+
+    recognition.lang = "ko-KR";
+    recognition.continuous = false;
+    recognition.interimResults = true;
+    recognition.maxAlternatives = 1;
+
+    recognition.onstart = () => {
+      setVoiceListening(true);
+      if (targetView === "ai") {
+        setActiveView("ai");
+        setChatInput("");
+      }
+      setMessage(buildMessage("neutral", "원하는 메뉴, 분위기, 위치를 말씀해 주세요."));
+    };
+
+    recognition.onresult = (event) => {
+      const transcript = Array.from(event.results)
+        .map((result) => result[0]?.transcript || "")
+        .join("")
+        .trim();
+
+      if (!transcript) {
+        return;
+      }
+
+      latestTranscript = transcript;
+      setVoiceDraft(transcript);
+
+      if (targetView === "ai") {
+        setChatInput(transcript);
+      }
+
+      const lastResult = event.results[event.results.length - 1];
+      if (lastResult?.isFinal) {
+        finalTranscript = transcript;
+      }
+    };
+
+    recognition.onerror = (event) => {
+      voiceErrorRef.current = event.error || "error";
+
+      if (event.error === "not-allowed" || event.error === "service-not-allowed") {
+        setMessage(
+          buildMessage("error", "마이크 권한이 필요합니다. 브라우저에서 마이크 접근을 허용해 주세요."),
+        );
+        return;
+      }
+
+      if (event.error === "audio-capture") {
+        setMessage(buildMessage("error", "마이크를 찾지 못했습니다. 연결 상태를 확인해 주세요."));
+      }
+    };
+
+    recognition.onend = () => {
+      const trimmed = (finalTranscript || latestTranscript).trim();
+      const stopRequested = voiceStopRequestedRef.current;
+      const errorCode = voiceErrorRef.current;
+
+      voiceRecognitionRef.current = null;
+      voiceStopRequestedRef.current = false;
+      voiceErrorRef.current = "";
+      setVoiceListening(false);
+      setVoiceDraft("");
+
+      if (trimmed) {
+        setQuery(trimmed);
+        if (targetView === "ai") {
+          setChatInput(trimmed);
+        }
+        runRecommendation(trimmed, targetView, targetView === "ai" ? {} : { skipChat: true });
+        return;
+      }
+
+      if (stopRequested || errorCode === "aborted") {
+        setMessage(buildMessage("neutral", "음성 입력을 중지했습니다."));
+        return;
+      }
+
+      if (errorCode === "no-speech") {
+        setMessage(buildMessage("error", "음성을 인식하지 못했습니다. 다시 시도해 주세요."));
+        return;
+      }
+
+      if (
+        errorCode &&
+        errorCode !== "not-allowed" &&
+        errorCode !== "service-not-allowed" &&
+        errorCode !== "audio-capture"
+      ) {
+        setMessage(buildMessage("error", "음성 입력을 처리하지 못했습니다. 다시 시도해 주세요."));
+        return;
+      }
+
+      if (!errorCode) {
+        setMessage(buildMessage("error", "음성을 인식하지 못했습니다. 다시 시도해 주세요."));
+      }
+    };
+
+    try {
+      recognition.start();
+    } catch {
+      voiceRecognitionRef.current = null;
+      setVoiceListening(false);
+      setVoiceDraft("");
+      setMessage(buildMessage("error", "음성 입력을 시작하지 못했습니다. 다시 시도해 주세요."));
+    }
+  }
+
   function selectMapItem(itemId, source = "panel") {
     if (selectedItemId === itemId && mapSelectionSource === source) {
       return;
@@ -1943,22 +2128,27 @@ export default function App() {
             <button
               className="group relative flex min-h-[320px] flex-col justify-between overflow-hidden rounded-[2rem] bg-surface-container-highest p-10 text-left"
               type="button"
-              onClick={requestCurrentLocation}
+              onClick={() => startVoiceSearch("recommend")}
             >
               <div className="absolute right-0 top-0 p-8 opacity-10">
-                <span className="material-symbols-outlined text-[120px] text-primary">mic</span>
+                <span className="material-symbols-outlined text-[120px] text-primary">
+                  {voiceListening ? "graphic_eq" : "mic"}
+                </span>
               </div>
               <div>
                 <span className="mb-6 inline-flex rounded-2xl bg-primary-container/20 p-3">
-                  <span className="material-symbols-outlined filled-icon text-3xl text-primary">mic</span>
+                  <span className="material-symbols-outlined filled-icon text-3xl text-primary">
+                    {voiceListening ? "graphic_eq" : "mic"}
+                  </span>
                 </span>
                 <h2 className="mb-2 text-3xl font-extrabold text-on-surface">목소리로 찾기</h2>
-                <p className="text-lg font-medium text-on-surface-variant">
-                  키보드 입력 없이 현재 위치 기반으로 추천을 시작합니다.
-                </p>
+                <p className="text-lg font-medium text-on-surface-variant">{homeVoiceCardBody}</p>
               </div>
               <div className="flex items-center text-xl font-extrabold text-primary transition-transform group-hover:translate-x-2">
-                위치 확인 시작 <span className="material-symbols-outlined ml-2">arrow_forward</span>
+                {homeVoiceCardCta}{" "}
+                <span className="material-symbols-outlined ml-2">
+                  {voiceListening ? "graphic_eq" : "arrow_forward"}
+                </span>
               </div>
             </button>
           </section>
@@ -2284,7 +2474,7 @@ export default function App() {
                 <div className="relative flex-1">
                   <input
                     className="w-full rounded-xl border-none bg-surface-container-highest px-6 py-5 pr-14 text-lg font-semibold placeholder:text-stone-400 focus:ring-2 focus:ring-primary/20"
-                    placeholder="메시지를 입력하세요..."
+                    placeholder={chatInputPlaceholder}
                     value={chatInput}
                     onChange={(event) => setChatInput(event.target.value)}
                     onKeyDown={(event) => {
@@ -2306,9 +2496,11 @@ export default function App() {
                   className="flex h-14 w-14 items-center justify-center rounded-full bg-primary text-white shadow-lg shadow-primary/20"
                   disabled={loading}
                   type="button"
-                  onClick={requestCurrentLocation}
+                  onClick={() => startVoiceSearch("ai")}
                 >
-                  <span className="material-symbols-outlined filled-icon">mic</span>
+                  <span className="material-symbols-outlined filled-icon">
+                    {voiceListening ? "graphic_eq" : "mic"}
+                  </span>
                 </button>
               </div>
             </div>

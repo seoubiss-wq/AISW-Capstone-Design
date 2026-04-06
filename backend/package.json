@@ -6,8 +6,9 @@
   "scripts": {
     "start": "node server.js",
     "lint": "eslint server.js scripts tests --ext .js",
-    "test": "node --test tests/server-config.test.js",
-    "migrate:users": "node scripts/migrate-users-json-to-supabase.js"
+    "test": "node --test tests/*.test.js",
+    "migrate:users": "node scripts/migrate-users-json-to-supabase.js",
+    "import:food-quarter": "node scripts/import-food-general-restaurants-quarter.js"
   },
   "dependencies": {
     "@google/genai": "^1.46.0",

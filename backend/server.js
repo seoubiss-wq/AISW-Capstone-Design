@@ -1680,6 +1680,10 @@ function buildDirectionsUrl(origin, destination) {
   return `https://www.google.com/maps/dir/?api=1&origin=${encodeURIComponent(originText)}&destination=${encodeURIComponent(destinationText)}&travelmode=driving`;
 }
 
+function buildFutureDepartureTime(minutesAhead = 2) {
+  return new Date(Date.now() + minutesAhead * 60 * 1000).toISOString();
+}
+
 async function fetchDistanceMatrix(origin, places) {
   if (!origin || !places.length || !GOOGLE_MAPS_API_KEY) {
     return new Map();
@@ -1702,43 +1706,89 @@ async function fetchDistanceMatrix(origin, places) {
   if (!validPlaces.length) return new Map();
 
   const matrix = new Map();
-  const MAX_DESTINATIONS_PER_REQUEST = 25;
+  const MAX_DESTINATIONS_PER_REQUEST = 100;
 
   for (let start = 0; start < validPlaces.length; start += MAX_DESTINATIONS_PER_REQUEST) {
     const batch = validPlaces.slice(start, start + MAX_DESTINATIONS_PER_REQUEST);
-    const params = new URLSearchParams({
-      origins: `${origin.lat},${origin.lng}`,
-      destinations: batch.map((entry) => entry.destination).join("|"),
-      mode: "driving",
-      language: "ko",
-      region: "kr",
-      departure_time: "now",
-      key: GOOGLE_MAPS_API_KEY,
+    const body = {
+      origins: [
+        {
+          waypoint: {
+            location: {
+              latLng: {
+                latitude: origin.lat,
+                longitude: origin.lng,
+              },
+            },
+          },
+        },
+      ],
+      destinations: batch.map((entry) => {
+        const [lat, lng] = entry.destination.split(",").map(Number);
+        return {
+          waypoint: {
+            location: {
+              latLng: {
+                latitude: lat,
+                longitude: lng,
+              },
+            },
+          },
+        };
+      }),
+      travelMode: "DRIVE",
+      routingPreference: "TRAFFIC_AWARE_OPTIMAL",
+      departureTime: buildFutureDepartureTime(),
+      languageCode: "ko-KR",
+      regionCode: "KR",
+      units: "METRIC",
+    };
+    const res = await fetch("https://routes.googleapis.com/distanceMatrix/v2:computeRouteMatrix", {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        "X-Goog-Api-Key": GOOGLE_MAPS_API_KEY,
+        "X-Goog-FieldMask":
+          "originIndex,destinationIndex,distanceMeters,duration,status,condition,localizedValues",
+      },
+      body: JSON.stringify(body),
     });
-    const url = `https://maps.googleapis.com/maps/api/distancematrix/json?${params}`;
-    const res = await fetch(url);
     const data = await res.json();
 
-    if (data.status !== "OK") {
-      throw new Error(
-        `Google Distance Matrix error: ${data.status}${data.error_message ? ` - ${data.error_message}` : ""}`,
-      );
+    if (!res.ok) {
+      const firstError = Array.isArray(data) ? data[0]?.error || data[0] : null;
+      const errorMessage =
+        firstError?.message || data?.error?.message || data?.message || `HTTP ${res.status}`;
+      throw new Error(`Google Compute Route Matrix error: ${errorMessage}`);
     }
 
-    const elements = data.rows?.[0]?.elements;
-    if (!Array.isArray(elements)) continue;
+    if (!Array.isArray(data)) continue;
 
-    batch.forEach((entry, index) => {
-      const element = elements[index];
-      if (!element || element.status !== "OK") return;
+    data.forEach((element) => {
+      const destinationIndex = Number(element?.destinationIndex);
+      if (!Number.isInteger(destinationIndex) || destinationIndex < 0 || destinationIndex >= batch.length) {
+        return;
+      }
+      if (element?.condition && element.condition !== "ROUTE_EXISTS") {
+        return;
+      }
+      if (Number(element?.status?.code || 0) !== 0) {
+        return;
+      }
+
+      const entry = batch[destinationIndex];
+      if (!entry) return;
+
+      const distanceMeters =
+        typeof element.distanceMeters === "number" ? element.distanceMeters : null;
+      const localizedValues = element.localizedValues || {};
+      const localizedDistance = String(localizedValues.distance?.text || "").trim();
+      const localizedDuration = String(localizedValues.duration?.text || "").trim();
+
       matrix.set(entry.key, {
-        distanceKm:
-          typeof element.distance?.value === "number"
-            ? element.distance.value / 1000
-            : null,
-        distanceText: element.distance?.text || "",
-        durationText:
-          element.duration_in_traffic?.text || element.duration?.text || "",
+        distanceKm: distanceMeters != null ? distanceMeters / 1000 : null,
+        distanceText: localizedDistance,
+        durationText: localizedDuration,
       });
     });
   }
@@ -1879,12 +1929,10 @@ async function buildRecommendationsFromPlaces(
     .slice(0, 3);
 
   if (!food.length) {
-    if (maxDistanceKm) {
-      throw new Error(
-        `${maxDistanceKm}km ???? ??? ?? ??? ?? ?????. ??? ? ????? ????? ?? ??? ??? ???.`,
-      );
-    }
-    throw new Error("??? ?? ??? ?? ?????. ???? ?? ?? ???.");
+    return {
+      items: [],
+      origin: origin || null,
+    };
   }
 
   const directionsList = await Promise.all(
