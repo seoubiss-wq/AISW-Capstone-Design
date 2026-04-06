@@ -5,8 +5,28 @@ import GoogleRouteMap from "./GoogleRouteMap";
 import MapDirectionsPage from "./MapDirectionsPage";
 import { sessionBootstrapQueryOptions } from "./queries/session";
 
-const API_BASE_URL =
-  import.meta.env.REACT_APP_API_BASE_URL?.replace(/\/$/, "") || "http://localhost:5500";
+function resolveApiBaseUrl() {
+  const envApiBaseUrl = String(import.meta.env.REACT_APP_API_BASE_URL || "").trim().replace(/\/$/, "");
+
+  if (!import.meta.env.PROD) {
+    return envApiBaseUrl || "http://localhost:5500";
+  }
+
+  if (!envApiBaseUrl) {
+    return "";
+  }
+
+  try {
+    const parsed = new URL(envApiBaseUrl);
+    if (["localhost", "127.0.0.1"].includes(parsed.hostname)) {
+      return "";
+    }
+  } catch {}
+
+  return envApiBaseUrl;
+}
+
+const API_BASE_URL = resolveApiBaseUrl();
 
 const AUTH_STORAGE_KEY = "tastepick.auth.token";
 const THEME_STORAGE_KEY = "tastepick.theme.mode";
@@ -3867,4 +3887,3 @@ export default function App() {
     </div>
   );
 }
-

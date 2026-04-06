@@ -1,8 +1,10 @@
 {
   "scripts": {
     "start": "concurrently \"npm start --prefix backend\" \"npm start --prefix frontend\"",
+    "build": "npm run build --prefix frontend",
     "lint": "npm run lint --prefix backend && npm run lint --prefix frontend",
-    "test": "npm test --prefix backend && npm run test:ci --prefix frontend"
+    "test": "npm test --prefix backend && npm run test:ci --prefix frontend",
+    "start:prod": "npm start --prefix backend"
   },
   "devDependencies": {
     "concurrently": "^9.2.1"

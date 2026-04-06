@@ -1,11 +1,14 @@
-﻿require("dotenv").config();
+require("dotenv").config();
 const express = require("express");
 const cors = require("cors");
 const crypto = require("crypto");
+const fs = require("fs");
+const path = require("path");
 const { Pool } = require("pg");
 const { GoogleGenAI } = require("@google/genai");
 
 const app = express();
+app.set("trust proxy", true);
 app.use(cors());
 app.use(express.json());
 
@@ -13,6 +16,18 @@ function asyncHandler(handler) {
   return function wrappedAsyncHandler(req, res, next) {
     Promise.resolve(handler(req, res, next)).catch(next);
   };
+}
+
+function resolvePublicOrigin(req) {
+  if (API_PUBLIC_ORIGIN) {
+    return API_PUBLIC_ORIGIN;
+  }
+
+  const forwardedProto = String(req.get("x-forwarded-proto") || "").split(",")[0].trim();
+  const forwardedHost = String(req.get("x-forwarded-host") || "").split(",")[0].trim();
+  const protocol = forwardedProto || req.protocol || "http";
+  const host = forwardedHost || req.get("host") || `localhost:${PORT}`;
+  return `${protocol}://${host}`.replace(/\/$/, "");
 }
 
 const API_KEY = process.env.GEMINI_API_KEY;
@@ -25,10 +40,11 @@ const DATABASE_URL = (
   process.env.SUPABASE_DATABASE_URL ||
   ""
 ).trim();
-const API_PUBLIC_ORIGIN = (
-  process.env.API_PUBLIC_ORIGIN || "http://localhost:5500"
-).replace(/\/$/, "");
+const API_PUBLIC_ORIGIN = String(process.env.API_PUBLIC_ORIGIN || "").replace(/\/$/, "");
 const PORT = Number(process.env.PORT || 5500);
+const FRONTEND_BUILD_DIR = path.join(__dirname, "..", "frontend", "build");
+const FRONTEND_INDEX_FILE = path.join(FRONTEND_BUILD_DIR, "index.html");
+const HAS_FRONTEND_BUILD = fs.existsSync(FRONTEND_INDEX_FILE);
 
 if (!DATABASE_URL) {
   throw new Error("DATABASE_URL 또는 SUPABASE_DB_URL이 필요합니다.");
@@ -1793,6 +1809,7 @@ async function buildRecommendationsFromPlaces(
   preferences = defaultPreferences(),
   options = {},
 ) {
+  const publicOrigin = String(options.publicOrigin || API_PUBLIC_ORIGIN || "").replace(/\/$/, "");
   const baseQuery = `${input}`.trim();
   const { queries, candidates } = await fetchCandidatePlaces(baseQuery, preferences);
   const maxDistanceKm = parseMaxDistanceKm(preferences.maxDistanceKm);
@@ -1918,7 +1935,7 @@ async function buildRecommendationsFromPlaces(
 
       let imageUrl;
       if (photoRef) {
-        imageUrl = `${API_PUBLIC_ORIGIN}/place-photo?ref=${encodeURIComponent(photoRef)}`;
+        imageUrl = `${publicOrigin}/place-photo?ref=${encodeURIComponent(photoRef)}`;
       } else {
         imageUrl = ensureImageUrl(null, index);
       }
@@ -2502,6 +2519,7 @@ app.post("/recommend", optionalAuth, async (req, res) => {
     const recommendationPayload = GOOGLE_MAPS_API_KEY
       ? await buildRecommendationsFromPlaces(input, preferences, {
           currentLocation,
+          publicOrigin: resolvePublicOrigin(req),
         })
       : {
           items: await buildRecommendationsGemini(finalInput),
@@ -2548,6 +2566,27 @@ app.post("/recommend", optionalAuth, async (req, res) => {
   }
 });
 
+if (HAS_FRONTEND_BUILD) {
+  app.use(express.static(FRONTEND_BUILD_DIR, { index: false }));
+
+  app.get("*", (req, res, next) => {
+    if (req.method !== "GET") {
+      return next();
+    }
+
+    const apiPrefixes = ["/auth", "/user", "/place-details", "/place-photo", "/recommend"];
+    if (
+      apiPrefixes.some(
+        (prefix) => req.path === prefix || req.path.startsWith(`${prefix}/`),
+      )
+    ) {
+      return next();
+    }
+
+    return res.sendFile(FRONTEND_INDEX_FILE);
+  });
+}
+
 app.use((error, req, res, next) => {
   console.error(error);
   if (res.headersSent) {
@@ -2568,6 +2607,7 @@ app.listen(PORT, () => {
     console.log("Recommendation source: Gemini fallback");
   }
   console.log("User store: Supabase Postgres");
-  console.log(`Public image origin: ${API_PUBLIC_ORIGIN}`);
+  console.log(
+    `Public image origin: ${API_PUBLIC_ORIGIN || `(request origin, frontend build: ${HAS_FRONTEND_BUILD ? "enabled" : "missing"})`}`,
+  );
 });
-
