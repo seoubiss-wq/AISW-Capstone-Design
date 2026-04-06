@@ -65,6 +65,17 @@ const NAV_ITEMS = [
 ];
 
 const CUISINE_OPTIONS = ["Han-sik", "Soup", "Italian", "Noodles", "Pastries"];
+
+export function shouldUseOriginLocationAsCurrentLocation(currentLocation, payload) {
+  if (currentLocation) return false;
+  if (payload?.originSource !== "browser_geolocation") return false;
+
+  return (
+    Number.isFinite(payload?.originLocation?.lat) &&
+    Number.isFinite(payload?.originLocation?.lng)
+  );
+}
+
 export function buildAiQuickAccessItems(history = [], popularTags = []) {
   const recentItems = history
     .slice(0, 3)
@@ -1619,7 +1630,9 @@ export default function App() {
         setLocationStatus(`위치 확인 완료 · ${next.lat.toFixed(4)}, ${next.lng.toFixed(4)}`);
       },
       () => {
-        setLocationStatus("위치 권한이 없어 IP 기반 위치를 사용합니다.");
+        setLocationStatus(
+          "위치 권한이 없어 현재 위치를 확인하지 못했습니다. 브라우저 위치 권한을 허용해 주세요.",
+        );
       },
       { enableHighAccuracy: true, timeout: 10000, maximumAge: 300000 },
     );
@@ -1837,23 +1850,13 @@ export default function App() {
         token,
       );
 
-      if (
-        !currentLocation &&
-        payload.originLocation &&
-        Number.isFinite(payload.originLocation.lat) &&
-        Number.isFinite(payload.originLocation.lng)
-      ) {
+      if (shouldUseOriginLocationAsCurrentLocation(currentLocation, payload)) {
         setCurrentLocation({
           lat: payload.originLocation.lat,
           lng: payload.originLocation.lng,
         });
-        if (payload.originSource === "google_geolocation_ip") {
-          setLocationStatus(
-            payload.originAccuracyMeters
-              ? `IP 기반 현재 위치 · 정확도 약 ${Math.round(payload.originAccuracyMeters)}m`
-              : "IP 기반 현재 위치를 사용 중입니다.",
-          );
-        }
+      } else if (!currentLocation && payload.originSource && payload.originSource !== "browser_geolocation") {
+        setLocationStatus("현재 위치를 정확히 표시하려면 브라우저 위치 권한을 허용해 주세요.");
       }
 
       const nextItems = Array.isArray(payload.items) ? payload.items : [];

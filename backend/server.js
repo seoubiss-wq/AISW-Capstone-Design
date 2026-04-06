@@ -1465,39 +1465,6 @@ async function geocodeSearchCenter(query) {
   return { lat: location.lat, lng: location.lng };
 }
 
-async function geolocateByIp() {
-  if (!GOOGLE_MAPS_API_KEY) return null;
-
-  const url = `https://www.googleapis.com/geolocation/v1/geolocate?key=${encodeURIComponent(GOOGLE_MAPS_API_KEY)}`;
-  const res = await fetch(url, {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ considerIp: true }),
-  });
-  const data = await res.json();
-
-  if (data.error) {
-    throw new Error(
-      `Google Geolocation error: ${data.error.message || data.error.code || "unknown error"}`,
-    );
-  }
-
-  const location = data.location;
-  if (
-    typeof location?.lat !== "number" ||
-    typeof location?.lng !== "number"
-  ) {
-    return null;
-  }
-
-  return {
-    lat: location.lat,
-    lng: location.lng,
-    accuracyMeters:
-      typeof data.accuracy === "number" ? data.accuracy : null,
-  };
-}
-
 function haversineDistanceKm(from, to) {
   const toRad = (value) => (value * Math.PI) / 180;
   const earthRadiusKm = 6371;
@@ -1832,26 +1799,13 @@ async function fetchDirectionsSummary(origin, place) {
 }
 
 async function resolveOriginLocation(currentLocation) {
-  if (currentLocation) {
-    return {
-      source: "browser_geolocation",
-      location: currentLocation,
-      accuracyMeters: null,
-    };
-  }
+  if (!currentLocation) return null;
 
-  try {
-    const approx = await geolocateByIp();
-    if (!approx) return null;
-    return {
-      source: "google_geolocation_ip",
-      location: { lat: approx.lat, lng: approx.lng },
-      accuracyMeters: approx.accuracyMeters,
-    };
-  } catch (error) {
-    console.warn("resolveOriginLocation failed:", error?.message || error);
-    return null;
-  }
+  return {
+    source: "browser_geolocation",
+    location: currentLocation,
+    accuracyMeters: null,
+  };
 }
 
 async function buildRecommendationsFromPlaces(
