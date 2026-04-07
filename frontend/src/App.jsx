@@ -1332,12 +1332,15 @@ export default function App() {
     ? "rounded-bl-[2rem] rounded-tl-[2rem] rounded-tr-[2rem] bg-primary-container px-5 py-4 text-on-primary-container shadow-sm"
     : "rounded-bl-[2rem] rounded-tl-[2rem] rounded-tr-[2rem] bg-primary-container px-8 py-5 text-on-primary-container shadow-sm";
   const aiUserTextClassName = isMobileDevice ? "text-base font-bold leading-relaxed" : "text-lg font-bold leading-relaxed";
-  const aiAssistantWrapperClassName = isMobileDevice ? "flex max-w-full gap-3" : "flex max-w-[90%] gap-4";
+  const aiAssistantWrapperClassName = isMobileDevice
+    ? "flex w-full max-w-full flex-col items-start gap-3"
+    : "flex max-w-[90%] gap-4";
   const aiAssistantAvatarClassName = isMobileDevice
-    ? "flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-primary shadow-lg shadow-primary/20"
+    ? "inline-flex items-center gap-2 self-start rounded-full bg-primary px-4 py-2 text-white shadow-lg shadow-primary/20"
     : "flex h-12 w-12 shrink-0 items-center justify-center rounded-full bg-primary shadow-lg shadow-primary/20";
+  const aiAssistantContentClassName = isMobileDevice ? "flex w-full flex-col gap-6" : "flex flex-col gap-6";
   const aiAssistantBubbleClassName = isMobileDevice
-    ? "chat-bubble-ai rounded-bl-[2rem] rounded-br-[2rem] rounded-tr-[2rem] border border-outline-variant/20 px-5 py-5 shadow-sm"
+    ? "chat-bubble-ai w-full max-w-none rounded-bl-[2rem] rounded-br-[2rem] rounded-tr-[2rem] border border-outline-variant/20 px-4 py-5 shadow-sm"
     : "chat-bubble-ai rounded-bl-[2rem] rounded-br-[2rem] rounded-tr-[2rem] border border-outline-variant/20 px-8 py-6 shadow-sm";
   const aiAssistantTextClassName = isMobileDevice
     ? "mb-4 text-base font-semibold leading-relaxed text-on-surface"
@@ -1346,9 +1349,9 @@ export default function App() {
     ? "mt-6 grid grid-cols-1 gap-5"
     : "mt-6 grid grid-cols-1 gap-6 md:grid-cols-2";
   const aiRecommendationCardClassName = isMobileDevice
-    ? "overflow-hidden rounded-[1.35rem] border border-outline-variant/10 bg-white text-left shadow-md transition-shadow"
+    ? "w-full overflow-hidden rounded-[1.35rem] border border-outline-variant/10 bg-white text-left shadow-md transition-shadow"
     : "overflow-hidden rounded-xl border border-outline-variant/10 bg-white text-left shadow-sm transition-shadow hover:shadow-md";
-  const aiRecommendationImageClassName = isMobileDevice ? "h-52 w-full overflow-hidden" : "h-40 w-full overflow-hidden";
+  const aiRecommendationImageClassName = isMobileDevice ? "h-64 w-full overflow-hidden" : "h-40 w-full overflow-hidden";
   const aiRecommendationBodyClassName = isMobileDevice ? "p-6" : "p-5";
   const aiRecommendationHeaderClassName = isMobileDevice
     ? "mb-3 flex flex-col gap-2"
@@ -2744,8 +2747,9 @@ export default function App() {
                     <div className={aiAssistantWrapperClassName} key={entry.id}>
                       <div className={aiAssistantAvatarClassName}>
                         <span className="material-symbols-outlined filled-icon text-white">smart_toy</span>
+                        {isMobileDevice ? <span className="text-sm font-black tracking-[0.16em]">AI</span> : null}
                       </div>
-                      <div className="flex flex-col gap-6">
+                      <div className={aiAssistantContentClassName}>
                         <div className={aiAssistantBubbleClassName}>
                           <p className={aiAssistantTextClassName}>{entry.text}</p>
                           {entry.items?.length ? (
