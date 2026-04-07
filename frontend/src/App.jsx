@@ -80,6 +80,25 @@ export function isNearbyRecommendationSeed(queryText) {
   return String(queryText || "").trim() === "내 주변 맛집 추천";
 }
 
+export function buildRecommendationAssistantText({ personalizationApplied, query, resultCount }) {
+  if (resultCount > 0) {
+    return personalizationApplied
+      ? `${personalizationApplied} 조건을 반영해 추천했어요.`
+      : `${query} 조건에 맞는 곳을 골랐어요.`;
+  }
+
+  return personalizationApplied
+    ? `${personalizationApplied} 조건을 반영했지만 맞는 식당을 찾지 못했어요. 조건을 조금 완화해 보세요.`
+    : `${query} 조건에 맞는 식당을 찾지 못했어요. 다른 조건으로 다시 시도해 보세요.`;
+}
+
+export function getRecommendationFeedbackState({ loading, hasRecommendationResponse, resultCount }) {
+  if (resultCount > 0) return "results";
+  if (loading) return "loading";
+  if (hasRecommendationResponse) return "empty";
+  return "idle";
+}
+
 export function buildAiQuickAccessItems(history = [], popularTags = []) {
   const recentItems = history
     .slice(0, 3)
@@ -730,6 +749,69 @@ function SavedCard({ item, onOpenMap, onRemove }) {
   );
 }
 
+function RecommendationLoadingGrid({ columns = 3 }) {
+  const cardCount = columns === 2 ? 2 : 3;
+  const gridClassName = columns === 2 ? "md:grid-cols-2" : "md:grid-cols-3";
+
+  return (
+    <div aria-hidden="true" className={`grid grid-cols-1 gap-8 ${gridClassName}`}>
+      {Array.from({ length: cardCount }).map((_, index) => (
+        <div
+          key={`recommendation-loading-${index}`}
+          className="overflow-hidden rounded-[2rem] border border-outline-variant/20 bg-surface-container-lowest p-6"
+        >
+          <div className="animate-pulse space-y-5">
+            <div className="h-48 rounded-[1.5rem] bg-surface-container" />
+            <div className="space-y-3">
+              <div className="h-5 w-2/3 rounded-full bg-surface-container" />
+              <div className="h-4 w-full rounded-full bg-surface-container" />
+              <div className="h-4 w-5/6 rounded-full bg-surface-container" />
+            </div>
+            <div className="flex gap-3">
+              <div className="h-9 w-24 rounded-full bg-surface-container" />
+              <div className="h-9 w-24 rounded-full bg-surface-container" />
+            </div>
+          </div>
+        </div>
+      ))}
+    </div>
+  );
+}
+
+function RecommendationEmptyState({ title, description }) {
+  return (
+    <div className="rounded-[2rem] bg-surface-container-low p-8 text-center">
+      <p className="text-2xl font-black text-on-surface">{title}</p>
+      <p className="mt-3 text-lg font-medium text-on-surface-variant">{description}</p>
+    </div>
+  );
+}
+
+function RecommendationMapStatusCard({ loading }) {
+  return (
+    <div className="absolute right-8 top-8 z-20 w-[360px] max-w-[calc(100vw-4rem)] rounded-[1.5rem] bg-white p-6 shadow-lg">
+      {loading ? (
+        <div aria-hidden="true" className="animate-pulse space-y-4">
+          <div className="h-4 w-24 rounded-full bg-surface-container" />
+          <div className="h-8 w-48 rounded-full bg-surface-container" />
+          <div className="h-4 w-full rounded-full bg-surface-container" />
+          <div className="h-4 w-5/6 rounded-full bg-surface-container" />
+        </div>
+      ) : (
+        <>
+          <p className="text-sm font-black uppercase tracking-[0.18em] text-on-surface-variant">
+            주변 맛집 추천
+          </p>
+          <p className="mt-3 text-2xl font-black text-on-surface">조건에 맞는 추천 결과가 없습니다.</p>
+          <p className="mt-4 text-base font-medium leading-relaxed text-on-surface-variant">
+            거리나 취향 조건을 조금 완화한 뒤 다시 시도해 보세요.
+          </p>
+        </>
+      )}
+    </div>
+  );
+}
+
 function AuthScreen({
   mode,
   booting,
@@ -954,6 +1036,7 @@ export default function App() {
   const [query, setQuery] = useState("");
   const [chatInput, setChatInput] = useState("");
   const [items, setItems] = useState([]);
+  const [hasRecommendationResponse, setHasRecommendationResponse] = useState(false);
   const [favorites, setFavorites] = useState([]);
   const [history, setHistory] = useState([]);
   const [visitHistory, setVisitHistory] = useState([]);
@@ -1083,6 +1166,11 @@ export default function App() {
     () => mapItems.find((item) => item.id === selectedItemId) || mapItems[0] || null,
     [mapItems, selectedItemId],
   );
+  const recommendationFeedbackState = getRecommendationFeedbackState({
+    loading,
+    hasRecommendationResponse,
+    resultCount: items.length,
+  });
   const activeRouteModeLabel = useMemo(
     () => ROUTE_MODE_OPTIONS.find((option) => option.id === routeMode)?.label || "길찾기",
     [routeMode],
@@ -1430,6 +1518,7 @@ export default function App() {
     setToken("");
     setUser(null);
     setItems([]);
+    setHasRecommendationResponse(false);
     setFavorites([]);
     setHistory([]);
     setVisitHistory([]);
@@ -1890,6 +1979,7 @@ export default function App() {
       const nextItems = Array.isArray(payload.items) ? payload.items : [];
       const enriched = nextItems.map((item, index) => enrichItem(item, index));
       setItems(nextItems);
+      setHasRecommendationResponse(true);
       if (enriched[0]) selectMapItem(enriched[0].id, "panel");
       if (latestRecommendationRequestIdRef.current === requestId) {
         setActiveView(targetView);
@@ -1899,10 +1989,11 @@ export default function App() {
         const assistantMessage = {
           id: `assistant-${Date.now()}`,
           role: "assistant",
-          text:
-            payload.personalizationApplied
-              ? `${payload.personalizationApplied} 조건을 반영해 추천했어요.`
-              : `${trimmed} 조건에 맞는 곳을 골랐어요.`,
+          text: buildRecommendationAssistantText({
+            personalizationApplied: payload.personalizationApplied,
+            query: trimmed,
+            resultCount: enriched.length,
+          }),
           items: enriched.slice(0, 2),
           chips: enriched.length ? FOLLOW_UP_CHIPS : [],
           createdAt: new Date().toISOString(),
@@ -2219,16 +2310,14 @@ export default function App() {
                   />
                 ))}
               </div>
-            ) : (
-              <div className="rounded-[2rem] bg-surface-container-low p-8 text-center">
-                <p className="text-2xl font-black text-on-surface">
-                  {loading ? "주변 추천 식당을 불러오는 중입니다." : "주변 추천 식당을 준비하고 있습니다."}
-                </p>
-                <p className="mt-3 text-lg font-medium text-on-surface-variant">
-                  현재 위치를 기준으로 가까운 식당을 먼저 보여드리고 있습니다.
-                </p>
-              </div>
-            )}
+            ) : recommendationFeedbackState === "loading" ? (
+              <RecommendationLoadingGrid columns={3} />
+            ) : recommendationFeedbackState === "empty" ? (
+              <RecommendationEmptyState
+                description="거리나 취향 조건을 조금 바꿔 다시 추천을 받아보세요."
+                title="조건에 맞는 추천 식당이 아직 없습니다."
+              />
+            ) : null}
           </section>
 
         </main>
@@ -2583,16 +2672,14 @@ export default function App() {
                 />
               ))}
             </div>
-          ) : (
-            <div className="rounded-[2rem] bg-surface-container-low p-8 text-center">
-              <p className="text-2xl font-black text-on-surface">
-                {loading ? "주변 추천 식당을 불러오는 중입니다." : "주변 추천 식당을 준비하고 있습니다."}
-              </p>
-              <p className="mt-3 text-lg font-medium text-on-surface-variant">
-                현재 위치를 기준으로 가까운 식당을 먼저 보여드리고 있습니다.
-              </p>
-            </div>
-          )}
+          ) : recommendationFeedbackState === "loading" ? (
+            <RecommendationLoadingGrid columns={2} />
+          ) : recommendationFeedbackState === "empty" ? (
+            <RecommendationEmptyState
+              description="거리나 취향 조건을 조금 바꿔 다시 추천을 받아보세요."
+              title="조건에 맞는 추천 식당이 아직 없습니다."
+            />
+          ) : null}
 
           <section className="mt-16 rounded-[2rem] bg-surface-container-low p-8">
             <div className="mb-6 flex items-center justify-between">
@@ -3405,19 +3492,9 @@ export default function App() {
                 ) : null}
               </div>
             </div>
-            ) : (
-            <div className="absolute right-8 top-8 z-20 w-[360px] max-w-[calc(100vw-4rem)] rounded-[1.5rem] bg-white p-6 shadow-lg">
-              <p className="text-sm font-black uppercase tracking-[0.18em] text-on-surface-variant">
-                주변 맛집 추천
-              </p>
-              <p className="mt-3 text-2xl font-black text-on-surface">
-                {loading ? "추천을 불러오는 중입니다." : "주변 식당을 찾는 중입니다."}
-              </p>
-              <p className="mt-4 text-base font-medium leading-relaxed text-on-surface-variant">
-                현재 위치를 기준으로 지도에서 바로 볼 수 있는 맛집을 준비하고 있습니다.
-              </p>
-            </div>
-            )}
+            ) : recommendationFeedbackState === "loading" || recommendationFeedbackState === "empty" ? (
+            <RecommendationMapStatusCard loading={recommendationFeedbackState === "loading"} />
+            ) : null}
 
             {mapSelectedItem ? (
             <div className="route-panel-scroll absolute bottom-4 left-4 top-20 z-20 w-[400px] max-w-[calc(100vw-2rem)] overflow-y-auto rounded-[1.75rem] bg-white p-5 shadow-2xl ring-1 ring-black/5">
