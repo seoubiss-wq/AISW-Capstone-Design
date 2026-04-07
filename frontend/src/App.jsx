@@ -1,5 +1,5 @@
 import { useQuery } from "@tanstack/react-query";
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import "./App.css";
 import GoogleRouteMap from "./GoogleRouteMap";
 import MapDirectionsPage from "./MapDirectionsPage";
@@ -88,6 +88,10 @@ export function isNearbyRecommendationSeed(queryText) {
 
 export function canUseMaxDistancePreference(currentLocation) {
   return Number.isFinite(currentLocation?.lat) && Number.isFinite(currentLocation?.lng);
+}
+
+export function shouldWaitForLocationBeforeRecommendation(currentLocation) {
+  return !canUseMaxDistancePreference(currentLocation);
 }
 
 export function isMobileDeviceEnvironment() {
@@ -1128,6 +1132,7 @@ export default function App() {
   const mapLocationRequestedRef = useRef(false);
   const mapNearbyRequestedRef = useRef(false);
   const recommendNearbyRequestedRef = useRef(false);
+  const locationRequestPromiseRef = useRef(null);
   const runRecommendationRef = useRef(null);
   const latestRecommendationRequestIdRef = useRef(0);
   const placeDetailsCacheRef = useRef({});
@@ -1435,6 +1440,47 @@ export default function App() {
   }, [visitHistory, shouldUseDemoVisits]);
   const flatVisitEntries = useMemo(() => Object.values(visitEntries).flat(), [visitEntries]);
 
+  const requestCurrentLocation = useCallback(() => {
+    if (!navigator.geolocation) {
+      setLocationStatus("현재 브라우저에서 위치 정보를 지원하지 않습니다.");
+      return Promise.resolve(null);
+    }
+
+    if (currentLocation) {
+      return Promise.resolve(currentLocation);
+    }
+
+    if (locationRequestPromiseRef.current) {
+      return locationRequestPromiseRef.current;
+    }
+
+    setLocationStatus("현재 위치를 확인하는 중입니다...");
+    locationRequestPromiseRef.current = new Promise((resolve) => {
+      navigator.geolocation.getCurrentPosition(
+        (position) => {
+          const next = {
+            lat: position.coords.latitude,
+            lng: position.coords.longitude,
+          };
+          setCurrentLocation(next);
+          setLocationStatus(`위치 확인 완료 · ${next.lat.toFixed(4)}, ${next.lng.toFixed(4)}`);
+          locationRequestPromiseRef.current = null;
+          resolve(next);
+        },
+        () => {
+          setLocationStatus(
+            "위치 권한이 없어 현재 위치를 확인하지 못했습니다. 브라우저 위치 권한을 허용해 주세요.",
+          );
+          locationRequestPromiseRef.current = null;
+          resolve(null);
+        },
+        { enableHighAccuracy: true, timeout: 10000, maximumAge: 300000 },
+      );
+    });
+
+    return locationRequestPromiseRef.current;
+  }, [currentLocation]);
+
   useEffect(() => {
     if (!activeSheet) return;
     setSheetName(activeSheet.name || "기본 설정");
@@ -1489,7 +1535,7 @@ export default function App() {
 
     mapLocationRequestedRef.current = true;
     requestCurrentLocation();
-  }, [activeView, booting, currentLocation]);
+  }, [activeView, booting, currentLocation, requestCurrentLocation]);
 
   useEffect(() => {
     if (booting || activeView !== "map") {
@@ -1872,31 +1918,6 @@ export default function App() {
     updatePreferenceField("avoidIngredients", [...next].join(", "));
   }
 
-  function requestCurrentLocation() {
-    if (!navigator.geolocation) {
-      setLocationStatus("현재 브라우저에서 위치 정보를 지원하지 않습니다.");
-      return;
-    }
-
-    setLocationStatus("현재 위치를 확인하는 중입니다...");
-    navigator.geolocation.getCurrentPosition(
-      (position) => {
-        const next = {
-          lat: position.coords.latitude,
-          lng: position.coords.longitude,
-        };
-        setCurrentLocation(next);
-        setLocationStatus(`위치 확인 완료 · ${next.lat.toFixed(4)}, ${next.lng.toFixed(4)}`);
-      },
-      () => {
-        setLocationStatus(
-          "위치 권한이 없어 현재 위치를 확인하지 못했습니다. 브라우저 위치 권한을 허용해 주세요.",
-        );
-      },
-      { enableHighAccuracy: true, timeout: 10000, maximumAge: 300000 },
-    );
-  }
-
   function stopVoiceSearch() {
     if (!voiceRecognitionRef.current) {
       return;
@@ -2084,12 +2105,6 @@ export default function App() {
       return;
     }
 
-    if (!currentLocation && isNearbyRecommendationSeed(trimmed)) {
-      setMessage(buildMessage("error", "현재 위치 권한을 허용한 뒤 내 주변 맛집 추천을 사용할 수 있어요."));
-      requestCurrentLocation();
-      return;
-    }
-
     setLoading(true);
     setMessage(null);
     setQuery(trimmed);
@@ -2105,24 +2120,39 @@ export default function App() {
     };
 
     try {
+      let resolvedCurrentLocation = currentLocation;
+
+      if (shouldWaitForLocationBeforeRecommendation(resolvedCurrentLocation)) {
+        resolvedCurrentLocation = await requestCurrentLocation();
+      }
+
+      if (!resolvedCurrentLocation && isNearbyRecommendationSeed(trimmed)) {
+        setMessage(buildMessage("error", "현재 위치 권한을 허용한 뒤 내 주변 맛집 추천을 사용할 수 있어요."));
+        return;
+      }
+
       const payload = await request(
         "/recommend",
         {
           method: "POST",
           body: JSON.stringify({
             input: trimmed,
-            ...(currentLocation ? { currentLocation } : {}),
+            ...(resolvedCurrentLocation ? { currentLocation: resolvedCurrentLocation } : {}),
           }),
         },
         token,
       );
 
-      if (shouldUseOriginLocationAsCurrentLocation(currentLocation, payload)) {
+      if (shouldUseOriginLocationAsCurrentLocation(resolvedCurrentLocation, payload)) {
         setCurrentLocation({
           lat: payload.originLocation.lat,
           lng: payload.originLocation.lng,
         });
-      } else if (!currentLocation && payload.originSource && payload.originSource !== "browser_geolocation") {
+      } else if (
+        !resolvedCurrentLocation &&
+        payload.originSource &&
+        payload.originSource !== "browser_geolocation"
+      ) {
         setLocationStatus("현재 위치를 정확히 표시하려면 브라우저 위치 권한을 허용해 주세요.");
       }
 

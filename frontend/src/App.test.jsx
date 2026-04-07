@@ -6,6 +6,7 @@ import App, {
   canUseMaxDistancePreference,
   getRecommendationFeedbackState,
   isNearbyRecommendationSeed,
+  shouldWaitForLocationBeforeRecommendation,
   shouldUseOriginLocationAsCurrentLocation,
 } from "./App";
 
@@ -109,4 +110,11 @@ test("waits for the recommendation response before showing empty-state copy", ()
 test("requires a resolved current location before enabling max distance", () => {
   expect(canUseMaxDistancePreference(null)).toBe(false);
   expect(canUseMaxDistancePreference({ lat: 37.5665, lng: 126.978 })).toBe(true);
+});
+
+test("waits for location resolution whenever coordinates are missing", () => {
+  expect(shouldWaitForLocationBeforeRecommendation(null)).toBe(true);
+  expect(
+    shouldWaitForLocationBeforeRecommendation({ lat: 37.5665, lng: 126.978 }),
+  ).toBe(false);
 });
