@@ -3,6 +3,7 @@ import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { render, screen } from "@testing-library/react";
 import App, {
   buildRecommendationAssistantText,
+  canUseMaxDistancePreference,
   getRecommendationFeedbackState,
   isNearbyRecommendationSeed,
   shouldUseOriginLocationAsCurrentLocation,
@@ -103,4 +104,9 @@ test("waits for the recommendation response before showing empty-state copy", ()
       resultCount: 0,
     }),
   ).toBe("empty");
+});
+
+test("requires a resolved current location before enabling max distance", () => {
+  expect(canUseMaxDistancePreference(null)).toBe(false);
+  expect(canUseMaxDistancePreference({ lat: 37.5665, lng: 126.978 })).toBe(true);
 });

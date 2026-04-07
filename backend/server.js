@@ -6,6 +6,10 @@ const fs = require("fs");
 const path = require("path");
 const { Pool } = require("pg");
 const { GoogleGenAI } = require("@google/genai");
+const {
+  buildPersonalizationText,
+  getEffectiveRecommendationPreferences,
+} = require("./scripts/shared/recommendationPreferences");
 
 const app = express();
 app.set("trust proxy", true);
@@ -881,26 +885,6 @@ async function optionalAuth(req, res, next) {
   } catch (error) {
     next(error);
   }
-}
-
-function buildPersonalizationText(preferences) {
-  const lines = [];
-  if (preferences.favoriteCuisine) {
-    lines.push(`선호 음식: ${preferences.favoriteCuisine}`);
-  }
-  if (preferences.mood) {
-    lines.push(`선호 분위기: ${preferences.mood}`);
-  }
-  if (preferences.budget) {
-    lines.push(`예산: ${preferences.budget}`);
-  }
-  if (preferences.maxDistanceKm) {
-    lines.push(`최대 이동 거리: ${preferences.maxDistanceKm}km`);
-  }
-  if (preferences.avoidIngredients) {
-    lines.push(`피하고 싶은 재료: ${preferences.avoidIngredients}`);
-  }
-  return lines.join(", ");
 }
 
 let ai;
@@ -2478,7 +2462,10 @@ app.post("/recommend", optionalAuth, async (req, res) => {
     });
   }
 
-  const preferences = req.user?.preferences || defaultPreferences();
+  const preferences = getEffectiveRecommendationPreferences(
+    normalizePreferences(req.user?.preferences || defaultPreferences()),
+    { hasCurrentLocation: Boolean(currentLocation) },
+  );
   const personalizationText = buildPersonalizationText(preferences);
   const finalInput = personalizationText
     ? `${input}. 媛쒖씤??議곌굔: ${personalizationText}`

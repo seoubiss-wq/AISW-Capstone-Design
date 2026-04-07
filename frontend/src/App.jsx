@@ -64,8 +64,6 @@ const NAV_ITEMS = [
   { id: "mypage", label: "마이페이지" },
 ];
 
-const CUISINE_OPTIONS = ["Han-sik", "Soup", "Italian", "Noodles", "Pastries"];
-
 export function shouldUseOriginLocationAsCurrentLocation(currentLocation, payload) {
   if (currentLocation) return false;
   if (payload?.originSource !== "browser_geolocation") return false;
@@ -78,6 +76,10 @@ export function shouldUseOriginLocationAsCurrentLocation(currentLocation, payloa
 
 export function isNearbyRecommendationSeed(queryText) {
   return String(queryText || "").trim() === "내 주변 맛집 추천";
+}
+
+export function canUseMaxDistancePreference(currentLocation) {
+  return Number.isFinite(currentLocation?.lat) && Number.isFinite(currentLocation?.lng);
 }
 
 export function buildRecommendationAssistantText({ personalizationApplied, query, resultCount }) {
@@ -1171,6 +1173,7 @@ export default function App() {
     hasRecommendationResponse,
     resultCount: items.length,
   });
+  const maxDistanceEnabled = canUseMaxDistancePreference(currentLocation);
   const activeRouteModeLabel = useMemo(
     () => ROUTE_MODE_OPTIONS.find((option) => option.id === routeMode)?.label || "길찾기",
     [routeMode],
@@ -1231,7 +1234,6 @@ export default function App() {
   const chatInputPlaceholder = voiceListening
     ? voiceDraft || "말씀을 듣고 있습니다..."
     : "메시지를 입력하세요...";
-  const selectedCuisineTokens = splitTokens(preferences.favoriteCuisine);
   const dietaryTokens = splitTokens(preferences.avoidIngredients);
   const visitEntries = useMemo(() => {
     const source = visitHistory.length
@@ -1706,13 +1708,6 @@ export default function App() {
 
   function updatePreferenceField(key, value) {
     setPreferences((current) => ({ ...current, [key]: value }));
-  }
-
-  function togglePreferenceChip(value) {
-    const next = new Set(splitTokens(preferences.favoriteCuisine));
-    if (next.has(value)) next.delete(value);
-    else next.add(value);
-    updatePreferenceField("favoriteCuisine", [...next].join(", "));
   }
 
   function toggleDietaryChip(value) {
@@ -3842,29 +3837,6 @@ export default function App() {
             </div>
 
             <div className="flex flex-col gap-8 lg:col-span-7">
-              <section className="rounded-xl bg-surface-container-low p-10">
-                <h2 className="mb-8 text-2xl font-extrabold text-on-surface">선호하는 음식 종류</h2>
-                <div className="flex flex-wrap gap-4">
-                  {CUISINE_OPTIONS.map((option) => {
-                    const selected = selectedCuisineTokens.includes(option);
-                    return (
-                      <button
-                        key={option}
-                        className={`rounded-xl px-8 py-4 text-xl font-bold ${
-                          selected
-                            ? "bg-primary text-white shadow-md"
-                            : "border border-transparent bg-surface-container-lowest text-on-surface hover:border-primary/20 hover:bg-orange-50"
-                        }`}
-                        type="button"
-                        onClick={() => togglePreferenceChip(option)}
-                      >
-                        {option}
-                      </button>
-                    );
-                  })}
-                </div>
-              </section>
-
               <div className="grid grid-cols-1 gap-8 md:grid-cols-2">
                 <section className="rounded-xl bg-surface-container-low p-8">
                   <div className="mb-6 flex items-center justify-between">
@@ -3972,6 +3944,15 @@ export default function App() {
                     />
                   </label>
                   <label className="block">
+                    <span className="mb-2 block text-sm font-black uppercase text-on-surface-variant">선호 음식</span>
+                    <input
+                      className="w-full rounded-[1rem] border-none bg-white px-4 py-4 font-semibold text-on-surface focus:ring-2 focus:ring-primary/20"
+                      value={preferences.favoriteCuisine}
+                      onChange={(event) => updatePreferenceField("favoriteCuisine", event.target.value)}
+                      placeholder="예: 한식, 일식, 국밥"
+                    />
+                  </label>
+                  <label className="block">
                     <span className="mb-2 block text-sm font-black uppercase text-on-surface-variant">분위기</span>
                     <input
                       className="w-full rounded-[1rem] border-none bg-white px-4 py-4 font-semibold text-on-surface focus:ring-2 focus:ring-primary/20"
@@ -3996,11 +3977,21 @@ export default function App() {
                   <label className="block">
                     <span className="mb-2 block text-sm font-black uppercase text-on-surface-variant">최대 이동거리(km)</span>
                     <input
-                      className="w-full rounded-[1rem] border-none bg-white px-4 py-4 font-semibold text-on-surface focus:ring-2 focus:ring-primary/20"
+                      className={`w-full rounded-[1rem] border-none px-4 py-4 font-semibold text-on-surface focus:ring-2 focus:ring-primary/20 ${
+                        maxDistanceEnabled
+                          ? "bg-white"
+                          : "cursor-not-allowed bg-surface-container text-on-surface-variant"
+                      }`}
+                      disabled={!maxDistanceEnabled}
                       value={preferences.maxDistanceKm}
                       onChange={(event) => updatePreferenceField("maxDistanceKm", event.target.value)}
-                      placeholder="예: 3"
+                      placeholder={maxDistanceEnabled ? "예: 3" : "위치 권한 허용 후 사용 가능"}
                     />
+                    {!maxDistanceEnabled ? (
+                      <p className="mt-2 text-sm font-medium text-on-surface-variant">
+                        현재 위치 접근을 허용해야 최대 이동 거리를 추천 조건에 반영할 수 있습니다.
+                      </p>
+                    ) : null}
                   </label>
                   <label className="block">
                     <span className="mb-2 block text-sm font-black uppercase text-on-surface-variant">피하고 싶은 재료</span>
