@@ -161,6 +161,32 @@ export function buildAiQuickAccessItems(history = [], popularTags = []) {
 
   return [...recentItems, ...tagItems];
 }
+
+function buildAppHistoryState({ activeView, selectedItemId, detailItem }) {
+  const shouldPersistSelectedItem = ["map", "detail", "reviews"].includes(activeView);
+  return {
+    __tastepickHistory: true,
+    activeView,
+    selectedItemId: shouldPersistSelectedItem ? selectedItemId || "" : "",
+    detailItem:
+      activeView === "detail" || activeView === "reviews"
+        ? detailItem || null
+        : null,
+  };
+}
+
+function isAppHistoryState(state) {
+  return Boolean(state?.__tastepickHistory && typeof state.activeView === "string");
+}
+
+function getAppHistorySnapshot(state) {
+  return JSON.stringify({
+    activeView: state?.activeView || "home",
+    selectedItemId: state?.selectedItemId || "",
+    detailItemId: state?.detailItem?.id || "",
+    detailItemPlaceId: state?.detailItem?.placeId || "",
+  });
+}
 const DIETARY_OPTIONS = ["땅콩 알레르기", "저염식", "유제품 제한", "밀가루 제한"];
 const FOLLOW_UP_CHIPS = ["더 가까운 곳", "주차 가능한 곳", "조용한 곳"];
 const POPULAR_TAGS = ["#한정식", "#조용한식당", "#건강식", "#강남맛집", "#발렛파킹"];
@@ -1141,6 +1167,10 @@ export default function App() {
   const voiceRecognitionRef = useRef(null);
   const voiceStopRequestedRef = useRef(false);
   const voiceErrorRef = useRef("");
+  const historyReadyRef = useRef(false);
+  const syncingFromHistoryRef = useRef(false);
+  const historySnapshotRef = useRef("");
+  const initialHistoryStateRef = useRef(buildAppHistoryState({ activeView: "home", selectedItemId: "", detailItem: null }));
   const [locationStatus, setLocationStatus] = useState("현재 위치를 아직 불러오지 않았습니다.");
   const [accessibility, setAccessibility] = useState({
     largeText: readStoredLargeText(),
@@ -1178,6 +1208,61 @@ export default function App() {
       document.body.classList.remove("mobile-device");
     };
   }, [isMobileDevice]);
+
+  const applyHistoryState = useCallback((state) => {
+    const nextView = state?.activeView || "home";
+    const nextSelectedItemId = state?.selectedItemId || "";
+    const nextDetailItem =
+      nextView === "detail" || nextView === "reviews" ? state?.detailItem || null : null;
+
+    syncingFromHistoryRef.current = true;
+    setSelectedItemId(nextSelectedItemId);
+    setDetailItem(nextDetailItem);
+    setActiveView(nextView);
+  }, []);
+
+  useEffect(() => {
+    if (typeof window === "undefined") return undefined;
+
+    const initialState = isAppHistoryState(window.history.state)
+      ? window.history.state
+      : initialHistoryStateRef.current;
+
+    historySnapshotRef.current = getAppHistorySnapshot(initialState);
+    window.history.replaceState(initialState, "");
+    historyReadyRef.current = true;
+
+    const handlePopState = (event) => {
+      if (!isAppHistoryState(event.state)) return;
+      historySnapshotRef.current = getAppHistorySnapshot(event.state);
+      applyHistoryState(event.state);
+    };
+
+    window.addEventListener("popstate", handlePopState);
+    return () => {
+      window.removeEventListener("popstate", handlePopState);
+    };
+  }, [applyHistoryState]);
+
+  useEffect(() => {
+    if (typeof window === "undefined" || !historyReadyRef.current) return;
+
+    const nextState = buildAppHistoryState({ activeView, selectedItemId, detailItem });
+    const nextSnapshot = getAppHistorySnapshot(nextState);
+    if (nextSnapshot === historySnapshotRef.current) {
+      syncingFromHistoryRef.current = false;
+      return;
+    }
+
+    if (syncingFromHistoryRef.current) {
+      syncingFromHistoryRef.current = false;
+      historySnapshotRef.current = nextSnapshot;
+      return;
+    }
+
+    window.history.pushState(nextState, "");
+    historySnapshotRef.current = nextSnapshot;
+  }, [activeView, detailItem, selectedItemId]);
 
   useEffect(() => {
     return () => {
