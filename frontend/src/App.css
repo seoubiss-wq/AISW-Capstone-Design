@@ -56,6 +56,49 @@ a {
   transition: background-color 0.2s ease, color 0.2s ease, border-color 0.2s ease;
 }
 
+.mobile-bottom-nav {
+  position: fixed;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  z-index: 55;
+  display: flex;
+  align-items: stretch;
+  justify-content: space-around;
+  gap: 0.35rem;
+  padding: 0.65rem 0.75rem calc(0.65rem + env(safe-area-inset-bottom, 0px));
+  border-top: 1px solid rgba(121, 116, 126, 0.18);
+  background: rgba(252, 249, 248, 0.94);
+  backdrop-filter: blur(20px);
+  box-shadow: 0 -10px 30px rgba(27, 28, 28, 0.08);
+}
+
+.mobile-bottom-nav__button {
+  flex: 1;
+  display: flex;
+  min-width: 0;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 0.2rem;
+  border: 0;
+  border-radius: 1rem;
+  padding: 0.55rem 0.4rem;
+  background: transparent;
+  color: #6a6f73;
+  font-size: 0.72rem;
+  font-weight: 800;
+}
+
+.mobile-bottom-nav__button--active {
+  background: rgba(255, 146, 56, 0.14);
+  color: #944a00;
+}
+
+.mobile-bottom-nav__icon {
+  font-size: 1.3rem;
+}
+
 .top-nav-icon {
   transition: background-color 0.2s ease, color 0.2s ease;
 }
@@ -67,7 +110,8 @@ body.theme-dark .app-root {
 }
 
 body.theme-dark .top-nav-shell,
-body.theme-dark .footer-shell {
+body.theme-dark .footer-shell,
+body.theme-dark .mobile-bottom-nav {
   background-color: #16191c !important;
   border-color: rgba(112, 124, 132, 0.35) !important;
   color: #f3f0f0 !important;
@@ -79,6 +123,15 @@ body.theme-dark .top-nav-icon {
 
 body.theme-dark .top-nav-icon:hover {
   background-color: #202428 !important;
+}
+
+body.theme-dark .mobile-bottom-nav__button {
+  color: #c9c7c7;
+}
+
+body.theme-dark .mobile-bottom-nav__button--active {
+  background: rgba(255, 183, 131, 0.18);
+  color: #ffb783;
 }
 
 .glass-panel {
@@ -247,6 +300,15 @@ body.theme-dark .route-canvas__veil {
   touch-action: pan-y;
 }
 
+.mobile-ai-quick-access {
+  scrollbar-width: none;
+  -ms-overflow-style: none;
+}
+
+.mobile-ai-quick-access::-webkit-scrollbar {
+  display: none;
+}
+
 .ai-quick-access-scroll {
   overscroll-behavior: contain;
   -webkit-overflow-scrolling: touch;
@@ -378,4 +440,13 @@ body.theme-dark [class*="border-outline-variant"] {
 
 body.theme-dark ::-webkit-scrollbar-thumb {
   background: rgba(255, 183, 131, 0.28);
+}
+
+body.mobile-device .route-canvas {
+  min-height: 560px;
+  border-radius: 1.5rem;
+}
+
+body.mobile-device .route-canvas--fullscreen {
+  min-height: calc(100vh - 8.5rem);
 }

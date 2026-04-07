@@ -158,6 +158,7 @@ export default function MapDirectionsPage({
   mapSelectedItem,
   mapItems,
   currentLocation,
+  isMobileDevice = false,
   mapSelectionSource,
   routeMode,
   routeModeOptions,
@@ -201,14 +202,58 @@ export default function MapDirectionsPage({
   const steps = routeSteps?.length ? routeSteps : routeUi?.steps || [];
   const otherPicks = useMemo(() => mapItems.slice(0, 8), [mapItems]);
   const statusTone = getStatusTone(routeUi?.status);
+  const emptyMainClassName = isMobileDevice
+    ? "page-fade min-h-[calc(100vh-4rem)] w-full pb-24 pt-16"
+    : "page-fade h-[calc(100vh-5rem)] w-full pt-20";
+  const mainClassName = isMobileDevice
+    ? "page-fade min-h-[calc(100vh-4rem)] w-full pb-24 pt-16"
+    : "page-fade h-[calc(100vh-5rem)] w-full pt-20";
+  const backButtonClassName = isMobileDevice
+    ? "absolute left-4 top-4 z-30 flex items-center gap-2 rounded-full bg-white/92 px-4 py-2.5 text-sm font-black text-primary shadow-lg ring-1 ring-black/5 backdrop-blur"
+    : "absolute left-6 top-6 z-30 flex items-center gap-2 rounded-full bg-white/92 px-5 py-3 text-base font-black text-primary shadow-lg ring-1 ring-black/5 backdrop-blur";
+  const emptyBackButtonClassName = isMobileDevice
+    ? "absolute left-4 top-4 z-20 flex items-center gap-2 rounded-full bg-white/92 px-4 py-2.5 text-sm font-black text-primary shadow-lg ring-1 ring-black/5 backdrop-blur"
+    : "absolute left-6 top-6 z-20 flex items-center gap-2 rounded-full bg-white/92 px-5 py-3 text-base font-black text-primary shadow-lg ring-1 ring-black/5 backdrop-blur";
+  const emptyOverlayClassName = isMobileDevice
+    ? "absolute inset-0 z-10 flex items-center justify-center p-4"
+    : "absolute inset-0 z-10 flex items-center justify-center p-6";
+  const emptyCardClassName = isMobileDevice
+    ? "w-full max-w-2xl rounded-[1.75rem] bg-white/96 p-6 text-center shadow-[0_24px_64px_rgba(0,0,0,0.12)] ring-1 ring-black/5 backdrop-blur"
+    : "w-full max-w-2xl rounded-[2.2rem] bg-white/96 p-10 text-center shadow-[0_24px_64px_rgba(0,0,0,0.12)] ring-1 ring-black/5 backdrop-blur";
+  const emptyTitleClassName = isMobileDevice
+    ? "mt-4 font-headline text-3xl font-black leading-tight text-on-surface"
+    : "mt-4 font-headline text-5xl font-black leading-tight text-on-surface";
+  const emptyBodyClassName = isMobileDevice
+    ? "mt-5 text-base font-medium leading-relaxed text-on-surface-variant"
+    : "mt-5 text-xl font-medium leading-relaxed text-on-surface-variant";
+  const emptyActionsClassName = isMobileDevice
+    ? "mt-8 flex flex-col gap-3 sm:flex-row sm:justify-center"
+    : "mt-8 flex justify-center gap-3";
+  const leftPanelClassName = isMobileDevice
+    ? "route-panel-scroll absolute inset-x-3 bottom-3 top-auto z-20 max-h-[58vh] overflow-y-auto rounded-[1.75rem] bg-white/95 p-4 shadow-[0_30px_70px_rgba(0,0,0,0.16)] ring-1 ring-black/5 backdrop-blur"
+    : "route-panel-scroll absolute bottom-4 left-4 top-20 z-20 w-[480px] max-w-[calc(100vw-2rem)] overflow-y-auto rounded-[2.2rem] bg-white/95 p-6 shadow-[0_30px_70px_rgba(0,0,0,0.16)] ring-1 ring-black/5 backdrop-blur xl:w-[540px]";
+  const rightPanelClassName = isMobileDevice
+    ? "route-panel-scroll absolute inset-x-3 bottom-3 top-auto z-20 max-h-[62vh] overflow-y-auto rounded-[1.75rem] bg-white/95 p-4 shadow-[0_30px_70px_rgba(0,0,0,0.16)] ring-1 ring-black/5 backdrop-blur"
+    : "route-panel-scroll absolute bottom-4 right-4 top-20 z-20 w-[470px] max-w-[calc(100vw-2rem)] overflow-y-auto rounded-[2.2rem] bg-white/95 p-6 shadow-[0_30px_70px_rgba(0,0,0,0.16)] ring-1 ring-black/5 backdrop-blur xl:w-[530px]";
+  const heroImageClassName = isMobileDevice ? "relative h-52" : "relative h-64";
+  const restaurantTitleClassName = isMobileDevice
+    ? "mt-3 font-headline text-[2rem] font-black leading-tight text-on-surface"
+    : "mt-3 font-headline text-[2.6rem] font-black leading-tight text-on-surface";
+  const actionGridClassName = isMobileDevice ? "grid grid-cols-1 gap-4 sm:grid-cols-2" : "grid grid-cols-2 gap-4";
+  const routeTitleClassName = isMobileDevice
+    ? "mt-2 font-headline text-[2rem] font-black leading-none text-on-surface"
+    : "mt-2 font-headline text-[2.45rem] font-black leading-none text-on-surface";
+  const routeMetricGridClassName = isMobileDevice
+    ? "mt-5 grid grid-cols-1 gap-4 sm:grid-cols-2"
+    : "mt-5 grid grid-cols-2 gap-4";
 
   if (!mapSelectedItem) {
     return (
-      <main className="page-fade h-[calc(100vh-5rem)] w-full pt-20">
+      <main className={emptyMainClassName}>
         <div className="route-canvas route-canvas--fullscreen relative h-full overflow-hidden bg-surface-container-low">
           <div className="absolute inset-0 bg-[radial-gradient(circle_at_top_left,_rgba(255,146,56,0.16),_transparent_45%),linear-gradient(180deg,_rgba(252,249,248,0.98),_rgba(252,249,248,0.94))]" />
           <button
-            className="absolute left-6 top-6 z-20 flex items-center gap-2 rounded-full bg-white/92 px-5 py-3 text-base font-black text-primary shadow-lg ring-1 ring-black/5 backdrop-blur"
+            className={emptyBackButtonClassName}
             type="button"
             onClick={onBack}
           >
@@ -216,17 +261,17 @@ export default function MapDirectionsPage({
             추천 목록으로
           </button>
 
-          <div className="absolute inset-0 z-10 flex items-center justify-center p-6">
-            <div className="w-full max-w-2xl rounded-[2.2rem] bg-white/96 p-10 text-center shadow-[0_24px_64px_rgba(0,0,0,0.12)] ring-1 ring-black/5 backdrop-blur">
+          <div className={emptyOverlayClassName}>
+            <div className={emptyCardClassName}>
               <p className="text-base font-black tracking-[0.18em] text-primary">Map directions</p>
-              <h1 className="mt-4 font-headline text-5xl font-black leading-tight text-on-surface">
+              <h1 className={emptyTitleClassName}>
                 주변 맛집을 불러오는 중입니다
               </h1>
-              <p className="mt-5 text-xl font-medium leading-relaxed text-on-surface-variant">
+              <p className={emptyBodyClassName}>
                 지도에 표시할 식당이 아직 없습니다. 현재 위치 기준 추천을 다시 받아오면
                 실제 식당과 길안내를 바로 확인할 수 있습니다.
               </p>
-              <div className="mt-8 flex flex-col gap-3 sm:flex-row sm:justify-center">
+              <div className={emptyActionsClassName}>
                 <button
                   className="rounded-[1.35rem] bg-primary px-6 py-5 text-lg font-black text-white shadow-[0_18px_40px_rgba(148,74,0,0.22)]"
                   type="button"
@@ -250,7 +295,7 @@ export default function MapDirectionsPage({
   }
 
   return (
-    <main className="page-fade h-[calc(100vh-5rem)] w-full pt-20">
+    <main className={mainClassName}>
       <div className="route-canvas route-canvas--fullscreen relative h-full overflow-hidden bg-surface">
         <GoogleRouteMap
           currentLocation={currentLocation}
@@ -263,15 +308,15 @@ export default function MapDirectionsPage({
         />
 
         <div className="pointer-events-none absolute inset-0 bg-[radial-gradient(circle_at_top_left,_rgba(255,146,56,0.18),_transparent_42%),radial-gradient(circle_at_top_right,_rgba(52,189,215,0.14),_transparent_28%)]" />
-        {!directionsOpen ? (
+        {!isMobileDevice && !directionsOpen ? (
           <div className="pointer-events-none absolute inset-y-0 left-0 w-[42rem] max-w-full bg-gradient-to-r from-[#fcf9f8]/96 via-[#fcf9f8]/86 to-transparent" />
         ) : null}
-        {directionsOpen ? (
+        {!isMobileDevice && directionsOpen ? (
           <div className="pointer-events-none absolute inset-y-0 right-0 w-[36rem] max-w-full bg-gradient-to-l from-[#fcf9f8]/96 via-[#fcf9f8]/86 to-transparent" />
         ) : null}
 
         <button
-          className="absolute left-6 top-6 z-30 flex items-center gap-2 rounded-full bg-white/92 px-5 py-3 text-base font-black text-primary shadow-lg ring-1 ring-black/5 backdrop-blur"
+          className={backButtonClassName}
           type="button"
           onClick={onBack}
         >
@@ -280,10 +325,10 @@ export default function MapDirectionsPage({
         </button>
 
         {!directionsOpen ? (
-          <section className="route-panel-scroll absolute bottom-4 left-4 top-20 z-20 w-[480px] max-w-[calc(100vw-2rem)] overflow-y-auto rounded-[2.2rem] bg-white/95 p-6 shadow-[0_30px_70px_rgba(0,0,0,0.16)] ring-1 ring-black/5 backdrop-blur xl:w-[540px]">
+          <section className={leftPanelClassName}>
             <div className="overflow-hidden rounded-[1.8rem] bg-surface-container-low shadow-sm">
               {mapSelectedItem.imageUrl ? (
-                <div className="relative h-64">
+                <div className={heroImageClassName}>
                   <img
                     alt={mapSelectedItem.name}
                     className="h-full w-full object-cover"
@@ -304,7 +349,7 @@ export default function MapDirectionsPage({
 
             <div className="mt-6">
               <p className="text-sm font-black tracking-[0.08em] text-on-surface-variant">Restaurant</p>
-              <h1 className="mt-3 font-headline text-[2.6rem] font-black leading-tight text-on-surface">
+              <h1 className={restaurantTitleClassName}>
                 {mapSelectedItem.name}
               </h1>
               <div className="mt-3 flex flex-wrap items-center gap-3 text-base font-semibold text-on-surface-variant">
@@ -409,7 +454,7 @@ export default function MapDirectionsPage({
                 <span className="material-symbols-outlined filled-icon text-[1.75rem]">near_me</span>
                 길 안내 시작
               </button>
-              <div className="grid grid-cols-2 gap-4">
+              <div className={actionGridClassName}>
                 <button
                   className="flex h-16 items-center justify-center gap-2 rounded-[1.35rem] bg-secondary-container px-4 text-base font-black text-on-secondary-container"
                   type="button"
@@ -436,12 +481,12 @@ export default function MapDirectionsPage({
         ) : null}
 
         {directionsOpen ? (
-          <aside className="route-panel-scroll absolute bottom-4 right-4 top-20 z-20 w-[470px] max-w-[calc(100vw-2rem)] overflow-y-auto rounded-[2.2rem] bg-white/95 p-6 shadow-[0_30px_70px_rgba(0,0,0,0.16)] ring-1 ring-black/5 backdrop-blur xl:w-[530px]">
+          <aside className={rightPanelClassName}>
             <div className={`rounded-[1.9rem] bg-gradient-to-br ${statusTone.panel} p-6`}>
               <div className="flex items-start justify-between gap-3">
                 <div>
                   <p className="text-sm font-black tracking-[0.08em] text-on-surface-variant">Route</p>
-                  <h2 className="mt-2 font-headline text-[2.45rem] font-black leading-none text-on-surface">
+                  <h2 className={routeTitleClassName}>
                     {routeDurationLabel || "시간 계산 중"}
                   </h2>
                   <p className="mt-3 text-lg font-semibold text-on-surface-variant">
@@ -497,7 +542,7 @@ export default function MapDirectionsPage({
               </p>
             </div>
 
-            <div className="mt-5 grid grid-cols-2 gap-4">
+            <div className={routeMetricGridClassName}>
               <div className="rounded-[1.7rem] bg-surface-container-low px-5 py-5">
                 <p className="text-sm font-black tracking-[0.08em] text-on-surface-variant">총 거리</p>
                 <p className="mt-3 text-[1.8rem] font-black text-on-surface">
