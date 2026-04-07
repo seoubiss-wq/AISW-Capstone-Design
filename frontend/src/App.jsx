@@ -76,6 +76,10 @@ export function shouldUseOriginLocationAsCurrentLocation(currentLocation, payloa
   );
 }
 
+export function isNearbyRecommendationSeed(queryText) {
+  return String(queryText || "").trim() === "내 주변 맛집 추천";
+}
+
 export function buildAiQuickAccessItems(history = [], popularTags = []) {
   const recentItems = history
     .slice(0, 3)
@@ -1218,14 +1222,19 @@ export default function App() {
       return;
     }
 
+    const nextSeedQuery = query || "내 주변 맛집 추천";
+    if (!currentLocation && isNearbyRecommendationSeed(nextSeedQuery)) {
+      return;
+    }
+
     if (items.length || loading || homeNearbyRequestedRef.current) {
       return;
     }
 
     // TODO: 추천 랭킹 로직이 준비되면 홈 화면도 이 주변 추천 seed 대신 전용 추천 결과를 사용한다.
     homeNearbyRequestedRef.current = true;
-    runRecommendationRef.current?.(query || "내 주변 맛집 추천", "home", { skipChat: true });
-  }, [activeView, booting, items.length, loading, query]);
+    runRecommendationRef.current?.(nextSeedQuery, "home", { skipChat: true });
+  }, [activeView, booting, currentLocation, items.length, loading, query]);
 
   useEffect(() => {
     if (booting || activeView !== "map" || currentLocation || mapLocationRequestedRef.current) {
@@ -1242,17 +1251,27 @@ export default function App() {
       return;
     }
 
+    const nextSeedQuery = query || "내 주변 맛집 추천";
+    if (!currentLocation && isNearbyRecommendationSeed(nextSeedQuery)) {
+      return;
+    }
+
     if (items.length || loading || mapNearbyRequestedRef.current) {
       return;
     }
 
     mapNearbyRequestedRef.current = true;
-    runRecommendationRef.current?.(query || "내 주변 맛집 추천", "map", { skipChat: true });
-  }, [activeView, booting, items.length, loading, query]);
+    runRecommendationRef.current?.(nextSeedQuery, "map", { skipChat: true });
+  }, [activeView, booting, currentLocation, items.length, loading, query]);
 
   useEffect(() => {
     if (booting || activeView !== "recommend") {
       recommendNearbyRequestedRef.current = false;
+      return;
+    }
+
+    const nextSeedQuery = query || "내 주변 맛집 추천";
+    if (!currentLocation && isNearbyRecommendationSeed(nextSeedQuery)) {
       return;
     }
 
@@ -1262,10 +1281,10 @@ export default function App() {
 
     // TODO: 추천 랭킹 로직이 준비되면 이 주변 추천 seed 호출 대신 해당 결과를 바로 연결한다.
     recommendNearbyRequestedRef.current = true;
-    runRecommendationRef.current?.(query || "내 주변 맛집 추천", "recommend", {
+    runRecommendationRef.current?.(nextSeedQuery, "recommend", {
       skipChat: true,
     });
-  }, [activeView, booting, items.length, loading, query]);
+  }, [activeView, booting, currentLocation, items.length, loading, query]);
 
   useEffect(() => {
     const shouldLoad = ["detail", "reviews"].includes(activeView);
@@ -1822,6 +1841,12 @@ export default function App() {
     const trimmed = String(nextQuery || chatInput || query).trim();
     if (!trimmed) {
       setMessage(buildMessage("error", "검색어나 질문을 입력해 주세요."));
+      return;
+    }
+
+    if (!currentLocation && isNearbyRecommendationSeed(trimmed)) {
+      setMessage(buildMessage("error", "현재 위치 권한을 허용한 뒤 내 주변 맛집 추천을 사용할 수 있어요."));
+      requestCurrentLocation();
       return;
     }
 

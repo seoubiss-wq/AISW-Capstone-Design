@@ -1,13 +1,16 @@
 import { afterEach, expect, test, vi } from "vitest";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
-import { render, screen, waitFor } from "@testing-library/react";
-import App, { shouldUseOriginLocationAsCurrentLocation } from "./App";
+import { render, screen } from "@testing-library/react";
+import App, {
+  isNearbyRecommendationSeed,
+  shouldUseOriginLocationAsCurrentLocation,
+} from "./App";
 
 afterEach(() => {
   vi.unstubAllGlobals();
 });
 
-test("renders TastePick brand on the auth screen", async () => {
+test("renders TastePick brand on the home screen without auto-fetching nearby results", () => {
   const fetchMock = vi.fn().mockResolvedValue({
     ok: true,
     headers: new Headers({ "content-type": "application/json" }),
@@ -32,7 +35,7 @@ test("renders TastePick brand on the auth screen", async () => {
     </QueryClientProvider>,
   );
   expect(screen.getAllByText(/TastePick/i).length).toBeGreaterThan(0);
-  await waitFor(() => expect(fetchMock).toHaveBeenCalled());
+  expect(fetchMock).not.toHaveBeenCalled();
 });
 
 test("does not promote IP fallback coordinates to the current location", () => {
@@ -49,4 +52,9 @@ test("does not promote IP fallback coordinates to the current location", () => {
       originLocation: { lat: 37.5665, lng: 126.978 },
     }),
   ).toBe(true);
+});
+
+test("recognizes the default nearby recommendation seed query", () => {
+  expect(isNearbyRecommendationSeed("내 주변 맛집 추천")).toBe(true);
+  expect(isNearbyRecommendationSeed("강남 맛집 추천")).toBe(false);
 });
