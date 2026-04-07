@@ -10,6 +10,10 @@ const {
   buildPersonalizationText,
   getEffectiveRecommendationPreferences,
 } = require("./scripts/shared/recommendationPreferences");
+const {
+  buildNearbyRadiusMeters,
+  shouldUseNearbyCandidateSearch,
+} = require("./scripts/shared/placesSearchStrategy");
 
 const app = express();
 app.set("trust proxy", true);
@@ -1417,6 +1421,42 @@ async function placesTextSearch(query) {
   return Array.isArray(data.results) ? data.results : [];
 }
 
+async function placesNearbySearch(query, originLocation, radiusMeters) {
+  const baseParams = {
+    location: `${originLocation.lat},${originLocation.lng}`,
+    radius: String(radiusMeters),
+    language: "ko",
+    region: "kr",
+    key: GOOGLE_MAPS_API_KEY,
+  };
+
+  const trySearch = async (extra) => {
+    const params = new URLSearchParams({ ...baseParams, ...extra });
+    const url = `https://maps.googleapis.com/maps/api/place/nearbysearch/json?${params}`;
+    const res = await fetch(url);
+    return res.json();
+  };
+
+  let data = await trySearch({ keyword: query, type: "restaurant" });
+  if (data.status === "ZERO_RESULTS") {
+    data = await trySearch({ keyword: query });
+  }
+
+  if (data.status === "REQUEST_DENIED" || data.status === "INVALID_REQUEST") {
+    throw new Error(
+      `Google Places Nearby error: ${data.status}${data.error_message ? ` - ${data.error_message}` : ""}`,
+    );
+  }
+
+  if (data.status !== "OK" && data.status !== "ZERO_RESULTS") {
+    throw new Error(
+      `Google Places Nearby error: ${data.status}${data.error_message ? ` - ${data.error_message}` : ""}`,
+    );
+  }
+
+  return Array.isArray(data.results) ? data.results : [];
+}
+
 async function geocodeSearchCenter(query) {
   const params = new URLSearchParams({
     address: query,
@@ -1505,9 +1545,18 @@ function buildPlacesSearchQueries(input, preferences = defaultPreferences()) {
   ]).slice(0, 4);
 }
 
-async function fetchCandidatePlaces(input, preferences = defaultPreferences()) {
+async function fetchCandidatePlaces(input, preferences = defaultPreferences(), options = {}) {
   const queries = buildPlacesSearchQueries(input, preferences);
-  const resultSets = await Promise.all(queries.map((query) => placesTextSearch(query)));
+  const maxDistanceKm = Number.isFinite(options.maxDistanceKm) ? options.maxDistanceKm : null;
+  const useNearbySearch = shouldUseNearbyCandidateSearch(options.originLocation, maxDistanceKm);
+  const nearbyRadiusMeters = useNearbySearch ? buildNearbyRadiusMeters(maxDistanceKm) : null;
+  const resultSets = await Promise.all(
+    queries.map((query) =>
+      useNearbySearch
+        ? placesNearbySearch(query, options.originLocation, nearbyRadiusMeters)
+        : placesTextSearch(query),
+    ),
+  );
   const merged = new Map();
 
   resultSets.forEach((results, queryIndex) => {
@@ -1799,12 +1848,15 @@ async function buildRecommendationsFromPlaces(
 ) {
   const publicOrigin = String(options.publicOrigin || API_PUBLIC_ORIGIN || "").replace(/\/$/, "");
   const baseQuery = `${input}`.trim();
-  const { queries, candidates } = await fetchCandidatePlaces(baseQuery, preferences);
   const maxDistanceKm = parseMaxDistanceKm(preferences.maxDistanceKm);
   const origin = await resolveOriginLocation(
     parseCurrentLocation(options.currentLocation),
   );
-  const searchCenter = maxDistanceKm ? await geocodeSearchCenter(baseQuery) : null;
+  const { queries, candidates } = await fetchCandidatePlaces(baseQuery, preferences, {
+    originLocation: origin?.location || null,
+    maxDistanceKm,
+  });
+  const searchCenter = maxDistanceKm && !origin?.location ? await geocodeSearchCenter(baseQuery) : null;
   const candidatePlaces = candidates.map((entry) => entry.place);
   const matrix = origin?.location
     ? await fetchDistanceMatrix(origin.location, candidatePlaces)
@@ -1849,9 +1901,7 @@ async function buildRecommendationsFromPlaces(
         preferenceSignals: preferenceScore.signals,
       };
     })
-    .filter(({ distanceKm }) =>
-      maxDistanceKm && distanceKm != null ? distanceKm <= maxDistanceKm : true,
-    )
+    .filter(({ distanceKm }) => (maxDistanceKm ? distanceKm != null && distanceKm <= maxDistanceKm : true))
     .sort((left, right) => {
       if (right.preferenceScore !== left.preferenceScore) {
         return right.preferenceScore - left.preferenceScore;
