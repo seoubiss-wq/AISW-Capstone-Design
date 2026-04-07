@@ -1333,10 +1333,10 @@ export default function App() {
     : "rounded-bl-[2rem] rounded-tl-[2rem] rounded-tr-[2rem] bg-primary-container px-8 py-5 text-on-primary-container shadow-sm";
   const aiUserTextClassName = isMobileDevice ? "text-base font-bold leading-relaxed" : "text-lg font-bold leading-relaxed";
   const aiAssistantWrapperClassName = isMobileDevice
-    ? "flex w-full max-w-full flex-col items-start gap-3"
+    ? "flex w-full max-w-full flex-col items-center gap-3"
     : "flex max-w-[90%] gap-4";
   const aiAssistantAvatarClassName = isMobileDevice
-    ? "inline-flex items-center gap-2 self-start rounded-full bg-primary px-4 py-2 text-white shadow-lg shadow-primary/20"
+    ? "flex h-14 w-14 items-center justify-center self-center rounded-full bg-primary text-white shadow-lg shadow-primary/20"
     : "flex h-12 w-12 shrink-0 items-center justify-center rounded-full bg-primary shadow-lg shadow-primary/20";
   const aiAssistantContentClassName = isMobileDevice ? "flex w-full flex-col gap-6" : "flex flex-col gap-6";
   const aiAssistantBubbleClassName = isMobileDevice
@@ -2747,7 +2747,6 @@ export default function App() {
                     <div className={aiAssistantWrapperClassName} key={entry.id}>
                       <div className={aiAssistantAvatarClassName}>
                         <span className="material-symbols-outlined filled-icon text-white">smart_toy</span>
-                        {isMobileDevice ? <span className="text-sm font-black tracking-[0.16em]">AI</span> : null}
                       </div>
                       <div className={aiAssistantContentClassName}>
                         <div className={aiAssistantBubbleClassName}>
