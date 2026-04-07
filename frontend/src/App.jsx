@@ -976,6 +976,7 @@ export default function App() {
   const mapNearbyRequestedRef = useRef(false);
   const recommendNearbyRequestedRef = useRef(false);
   const runRecommendationRef = useRef(null);
+  const latestRecommendationRequestIdRef = useRef(0);
   const placeDetailsCacheRef = useRef({});
   const chatScrollContainerRef = useRef(null);
   const chatScrollAnchorRef = useRef(null);
@@ -1854,6 +1855,8 @@ export default function App() {
     setMessage(null);
     setQuery(trimmed);
     setChatInput("");
+    const requestId = latestRecommendationRequestIdRef.current + 1;
+    latestRecommendationRequestIdRef.current = requestId;
 
     const userMessage = {
       id: `user-${Date.now()}`,
@@ -1888,7 +1891,9 @@ export default function App() {
       const enriched = nextItems.map((item, index) => enrichItem(item, index));
       setItems(nextItems);
       if (enriched[0]) selectMapItem(enriched[0].id, "panel");
-      setActiveView(targetView);
+      if (latestRecommendationRequestIdRef.current === requestId) {
+        setActiveView(targetView);
+      }
 
       if (!skipChat) {
         const assistantMessage = {
