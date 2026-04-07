@@ -1337,6 +1337,30 @@ export default function App() {
   const aiAssistantTextClassName = isMobileDevice
     ? "mb-4 text-base font-semibold leading-relaxed text-on-surface"
     : "mb-4 text-lg font-semibold leading-relaxed text-on-surface";
+  const aiRecommendationGridClassName = isMobileDevice
+    ? "mt-6 grid grid-cols-1 gap-5"
+    : "mt-6 grid grid-cols-1 gap-6 md:grid-cols-2";
+  const aiRecommendationCardClassName = isMobileDevice
+    ? "overflow-hidden rounded-[1.35rem] border border-outline-variant/10 bg-white text-left shadow-md transition-shadow"
+    : "overflow-hidden rounded-xl border border-outline-variant/10 bg-white text-left shadow-sm transition-shadow hover:shadow-md";
+  const aiRecommendationImageClassName = isMobileDevice ? "h-52 w-full overflow-hidden" : "h-40 w-full overflow-hidden";
+  const aiRecommendationBodyClassName = isMobileDevice ? "p-6" : "p-5";
+  const aiRecommendationHeaderClassName = isMobileDevice
+    ? "mb-3 flex flex-col gap-2"
+    : "mb-2 flex items-start justify-between";
+  const aiRecommendationTitleClassName = isMobileDevice
+    ? "font-headline text-2xl font-black text-on-surface"
+    : "font-headline text-xl font-black text-on-surface";
+  const aiRecommendationMetaClassName = isMobileDevice
+    ? "text-sm font-black text-on-surface-variant"
+    : "text-xs font-black text-on-surface-variant";
+  const aiRecommendationReasonClassName = isMobileDevice
+    ? "mb-4 text-base font-medium leading-relaxed text-stone-700"
+    : "mb-4 text-sm font-medium leading-relaxed text-stone-700";
+  const aiRecommendationTagsClassName = isMobileDevice ? "flex flex-wrap gap-2.5" : "flex gap-2";
+  const aiRecommendationTagClassName = isMobileDevice
+    ? "rounded bg-surface-container px-3 py-1.5 text-xs font-black uppercase text-stone-700"
+    : "rounded bg-surface-container px-2 py-1 text-[10px] font-black uppercase text-stone-700";
   const aiInputContainerClassName = isMobileDevice
     ? "border-t border-outline-variant/10 bg-surface-container-low p-4"
     : "border-t border-outline-variant/10 bg-surface-container-low p-6";
@@ -2695,30 +2719,30 @@ export default function App() {
                         <div className={aiAssistantBubbleClassName}>
                           <p className={aiAssistantTextClassName}>{entry.text}</p>
                           {entry.items?.length ? (
-                            <div className="mt-6 grid grid-cols-1 gap-6 md:grid-cols-2">
+                            <div className={aiRecommendationGridClassName}>
                               {entry.items.map((item) => (
                                 <button
                                   key={item.id}
-                                  className="overflow-hidden rounded-xl border border-outline-variant/10 bg-white text-left shadow-sm transition-shadow hover:shadow-md"
+                                  className={aiRecommendationCardClassName}
                                   type="button"
                                   onClick={() => openItem(item, "detail")}
                                 >
-                                  <div className="h-40 w-full overflow-hidden">
+                                  <div className={aiRecommendationImageClassName}>
                                     <img alt={item.name} className="h-full w-full object-cover" src={item.imageUrl} />
                                   </div>
-                                  <div className="p-5">
-                                    <div className="mb-2 flex items-start justify-between">
-                                      <h3 className="font-headline text-xl font-black text-on-surface">{item.name}</h3>
-                                      <span className="text-xs font-black text-on-surface-variant">
+                                  <div className={aiRecommendationBodyClassName}>
+                                    <div className={aiRecommendationHeaderClassName}>
+                                      <h3 className={aiRecommendationTitleClassName}>{item.name}</h3>
+                                      <span className={aiRecommendationMetaClassName}>
                                         {item.address || item.locationText}
                                       </span>
                                     </div>
-                                    <p className="mb-4 text-sm font-medium leading-relaxed text-stone-700">{item.reason}</p>
-                                    <div className="flex gap-2">
+                                    <p className={aiRecommendationReasonClassName}>{item.reason}</p>
+                                    <div className={aiRecommendationTagsClassName}>
                                       {item.keywords.slice(0, 2).map((tag) => (
                                         <span
                                           key={tag}
-                                          className="rounded bg-surface-container px-2 py-1 text-[10px] font-black uppercase text-stone-700"
+                                          className={aiRecommendationTagClassName}
                                         >
                                           {tag}
                                         </span>
