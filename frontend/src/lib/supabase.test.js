@@ -1,48 +1,47 @@
 import { expect, test } from "vitest";
 import {
-  buildSupabaseGoogleRedirectUrl,
-  isSupabaseGoogleSession,
-  stripSupabaseAuthParams,
+  buildSupabaseStoragePrefix,
+  clearSupabaseAuthStorage,
+  getSupabaseBridgeStorage,
 } from "./supabase";
 
-test("recognizes google Supabase sessions", () => {
-  expect(
-    isSupabaseGoogleSession({
-      access_token: "token",
-      user: {
-        app_metadata: {
-          provider: "google",
-        },
-      },
-    }),
-  ).toBe(true);
+function createMockStorage(initialEntries) {
+  const map = new Map(initialEntries);
 
-  expect(
-    isSupabaseGoogleSession({
-      access_token: "token",
-      user: {
-        app_metadata: {
-          provider: "kakao",
-          providers: ["kakao"],
-        },
-      },
-    }),
-  ).toBe(false);
+  return {
+    get length() {
+      return map.size;
+    },
+    key(index) {
+      return [...map.keys()][index] ?? null;
+    },
+    getItem(key) {
+      return map.has(key) ? map.get(key) : null;
+    },
+    removeItem(key) {
+      map.delete(key);
+    },
+  };
+}
+
+test("buildSupabaseStoragePrefix derives the Supabase project ref", () => {
+  expect(buildSupabaseStoragePrefix("https://tastepick.supabase.co")).toBe("sb-tastepick-auth-token");
 });
 
-test("builds the Google OAuth redirect url from the current location", () => {
-  expect(
-    buildSupabaseGoogleRedirectUrl({
-      origin: "https://tastepick.onrender.com",
-      pathname: "/auth",
-    }),
-  ).toBe("https://tastepick.onrender.com/auth");
+test("clearSupabaseAuthStorage removes persisted Supabase auth artifacts", () => {
+  const storage = createMockStorage([
+    ["sb-tastepick-auth-token", "session"],
+    ["sb-tastepick-auth-token-code-verifier", "verifier"],
+    ["other-key", "keep-me"],
+  ]);
+
+  clearSupabaseAuthStorage([storage], "https://tastepick.supabase.co");
+
+  expect(storage.getItem("sb-tastepick-auth-token")).toBeNull();
+  expect(storage.getItem("sb-tastepick-auth-token-code-verifier")).toBeNull();
+  expect(storage.getItem("other-key")).toBe("keep-me");
 });
 
-test("strips Supabase auth callback params from the returned url", () => {
-  expect(
-    stripSupabaseAuthParams(
-      "https://tastepick.onrender.com/?code=abc&state=xyz#access_token=token&type=recovery",
-    ),
-  ).toBe("/");
+test("getSupabaseBridgeStorage prefers sessionStorage for ephemeral OAuth bridging", () => {
+  expect(getSupabaseBridgeStorage()).toBe(window.sessionStorage);
 });

@@ -8,7 +8,7 @@ function parseOpenNowOnly(value) {
   return false;
 }
 
-function isPlaceOpenNow(place) {
+function readPlaceOpenNow(place) {
   if (typeof place?.current_opening_hours?.open_now === "boolean") {
     return place.current_opening_hours.open_now;
   }
@@ -17,10 +17,15 @@ function isPlaceOpenNow(place) {
     return place.opening_hours.open_now;
   }
 
-  return false;
+  return null;
+}
+
+function isPlaceOpenNow(place) {
+  return readPlaceOpenNow(place) === true;
 }
 
 module.exports = {
   parseOpenNowOnly,
   isPlaceOpenNow,
+  readPlaceOpenNow,
 };

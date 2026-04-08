@@ -16,6 +16,7 @@ const {
 } = require("./scripts/shared/placesSearchStrategy");
 const {
   parseOpenNowOnly,
+  readPlaceOpenNow,
 } = require("./scripts/shared/openStatus");
 const { buildDbSslConfig } = require("./scripts/shared/dbConfig");
 const { runNonCriticalOperation } = require("./scripts/shared/nonCriticalOperation");
@@ -28,6 +29,12 @@ const {
 const {
   fetchSupabaseUserProfile,
 } = require("./scripts/shared/supabaseAuth");
+const {
+  canAutoLinkGoogleAccount,
+  GOOGLE_AUTH_PROVIDER,
+  LOCAL_AUTH_PROVIDER,
+  normalizeAuthProvider,
+} = require("./scripts/shared/authProvider");
 const {
   buildAllowedCorsOrigins,
   resolveCorsOrigin,
@@ -77,7 +84,7 @@ function asyncHandler(handler) {
   };
 }
 
-const RESPONSE_CACHE_VERSION = 7;
+const RESPONSE_CACHE_VERSION = 8;
 const cache = {};
 
 const PASSWORD_ITERATIONS = 120000;
@@ -137,6 +144,8 @@ const dbPool = new Pool({
   max: 5,
 });
 
+let authProviderSchemaReadyPromise = null;
+
 dbPool.on("error", (error) => {
   console.error("Postgres pool error:", error);
 });
@@ -184,6 +193,7 @@ function getActivePreferenceSheet(user) {
 }
 
 function ensureUserDataShape(user) {
+  user.authProvider = normalizeAuthProvider(user.authProvider);
   const legacyPreferences =
     user.preferences && typeof user.preferences === "object"
       ? normalizePreferences(user.preferences)
@@ -349,6 +359,7 @@ function mapUserGraphFromDb(
     id: userRow.id,
     name: userRow.name,
     email: userRow.email,
+    authProvider: userRow.auth_provider,
     passwordHash: userRow.password_hash,
     createdAt: normalizeIsoString(userRow.created_at),
     updatedAt: normalizeIsoString(userRow.updated_at),
@@ -383,9 +394,26 @@ async function withDbClient(run) {
   }
 }
 
+async function ensureAuthProviderSchema() {
+  if (!authProviderSchemaReadyPromise) {
+    authProviderSchemaReadyPromise = withDbClient(async (client) => {
+      await client.query(
+        `alter table public.app_users
+           add column if not exists auth_provider text not null default 'local'`,
+      );
+    }).catch((error) => {
+      authProviderSchemaReadyPromise = null;
+      throw error;
+    });
+  }
+
+  return authProviderSchemaReadyPromise;
+}
+
 async function loadDbUserGraphById(userId) {
+  await ensureAuthProviderSchema();
   const userResult = await dbPool.query(
-    `select id, email, name, password_hash, created_at, updated_at
+    `select id, email, name, auth_provider, password_hash, created_at, updated_at
        from public.app_users
       where id = $1
       limit 1`,
@@ -476,11 +504,13 @@ async function getUserByLoginIdentifier(rawIdentifier) {
   return result.rowCount ? loadDbUserGraphById(result.rows[0].id) : null;
 }
 
-async function createUserRecord({ id, name, email, passwordHash, createdAt }) {
+async function createUserRecord({ id, name, email, passwordHash, createdAt, authProvider }) {
+  await ensureAuthProviderSchema();
   const newUser = ensureUserDataShape({
     id,
     name,
     email,
+    authProvider,
     passwordHash,
     createdAt: createdAt || new Date().toISOString(),
   });
@@ -489,9 +519,17 @@ async function createUserRecord({ id, name, email, passwordHash, createdAt }) {
     await client.query("begin");
     try {
       await client.query(
-        `insert into public.app_users (id, email, name, password_hash, created_at, updated_at)
-         values ($1, $2, $3, $4, $5, $5)`,
-        [newUser.id, newUser.email, newUser.name, newUser.passwordHash, normalizeIsoString(newUser.createdAt)],
+        `insert into public.app_users (
+           id, email, name, auth_provider, password_hash, created_at, updated_at
+         ) values ($1, $2, $3, $4, $5, $6, $6)`,
+        [
+          newUser.id,
+          newUser.email,
+          newUser.name,
+          newUser.authProvider,
+          newUser.passwordHash,
+          normalizeIsoString(newUser.createdAt),
+        ],
       );
 
       for (const [index, sheet] of newUser.preferenceSheets.entries()) {
@@ -1977,7 +2015,7 @@ async function buildRecommendationsFromPlaces(
     : distanceFilteredCandidates;
 
   const food = candidatesForScoring
-    .map(({ place, distanceKm, distanceText, durationText, queryIndex, matchedQuery }) => {
+    .map(({ place, distanceKm, distanceText, durationText, queryIndex, matchedQuery, placeDetails }) => {
       const preferenceScore = scorePlaceForPreferences(place, preferences, {
         distanceKm,
         queryIndex,
@@ -1991,6 +2029,7 @@ async function buildRecommendationsFromPlaces(
         durationText,
         queryIndex,
         matchedQuery,
+        placeDetails,
         preferenceScore: preferenceScore.score,
         preferenceSignals: preferenceScore.signals,
       };
@@ -2016,11 +2055,33 @@ async function buildRecommendationsFromPlaces(
     };
   }
 
-  const directionsList = await Promise.all(
-    food.map(({ place }) =>
-      origin?.location ? fetchDirectionsSummary(origin.location, place) : null,
+  const [directionsList, placeDetailsList] = await Promise.all([
+    Promise.all(
+      food.map(({ place }) =>
+        origin?.location ? fetchDirectionsSummary(origin.location, place) : null,
+      ),
     ),
-  );
+    Promise.all(
+      food.map(async ({ place, placeDetails }) => {
+        if (placeDetails) {
+          return placeDetails;
+        }
+
+        const placeId = String(place.place_id || "").trim();
+        if (!placeId) return null;
+
+        try {
+          return await fetchGooglePlaceDetails(placeId);
+        } catch (error) {
+          console.warn(
+            `Failed to fetch place details for ${placeId}:`,
+            error?.message || error,
+          );
+          return null;
+        }
+      }),
+    ),
+  ]);
 
   const items = food.map(
     (
@@ -2031,6 +2092,7 @@ async function buildRecommendationsFromPlaces(
         durationText,
         matchedQuery,
         preferenceSignals,
+        placeDetails: preloadedPlaceDetails,
       },
       index,
     ) => {
@@ -2038,6 +2100,11 @@ async function buildRecommendationsFromPlaces(
       const placeId = place.place_id;
       const photoRef = place.photos?.[0]?.photo_reference;
       const directions = directionsList[index];
+      const placeDetails = placeDetailsList[index] || preloadedPlaceDetails || null;
+      const openNow = placeDetails?.openNow ?? readPlaceOpenNow(place);
+      const businessStatus = String(
+        placeDetails?.businessStatus || place.business_status || "",
+      ).trim();
 
       const parts = [];
       if (preferenceSignals.length) {
@@ -2121,6 +2188,8 @@ async function buildRecommendationsFromPlaces(
         distanceKm,
         travelDuration: directions?.durationText || durationText || "",
         routeSummary: directions?.summary || "",
+        openNow,
+        businessStatus,
         originSource: origin?.source || "",
       };
     },
@@ -2245,6 +2314,7 @@ app.post("/auth/register", asyncHandler(async (req, res) => {
     id: crypto.randomUUID(),
     name,
     email,
+    authProvider: LOCAL_AUTH_PROVIDER,
     passwordHash: hashPassword(password),
     createdAt: new Date().toISOString(),
   });
@@ -2297,8 +2367,13 @@ app.post("/auth/oauth/google", async (req, res) => {
         id: crypto.randomUUID(),
         name: googleProfile.name,
         email: googleProfile.email,
+        authProvider: GOOGLE_AUTH_PROVIDER,
         passwordHash: createUnusablePasswordHash(),
         createdAt: new Date().toISOString(),
+      });
+    } else if (!canAutoLinkGoogleAccount(user)) {
+      return res.status(409).json({
+        error: "이미 이메일/비밀번호로 가입된 계정입니다. 기존 로그인 방식을 사용해 주세요.",
       });
     } else if (!String(user.name || "").trim() && googleProfile.name) {
       user = await updateUserById(user.id, (current) => ({

@@ -4,6 +4,7 @@ const assert = require("node:assert/strict");
 const {
   isPlaceOpenNow,
   parseOpenNowOnly,
+  readPlaceOpenNow,
 } = require("../scripts/shared/openStatus");
 
 test("parses the open now flag from request payloads", () => {
@@ -32,6 +33,22 @@ test("treats only explicit open_now=true values as currently open", () => {
   assert.equal(
     isPlaceOpenNow({
       business_status: "OPERATIONAL",
+    }),
+    false,
+  );
+});
+
+test("preserves unknown open-now metadata as null", () => {
+  assert.equal(
+    readPlaceOpenNow({
+      business_status: "OPERATIONAL",
+    }),
+    null,
+  );
+
+  assert.equal(
+    readPlaceOpenNow({
+      opening_hours: { open_now: false },
     }),
     false,
   );

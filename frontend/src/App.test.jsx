@@ -4,8 +4,10 @@ import { render, screen, waitFor } from "@testing-library/react";
 import App, {
   buildRecommendationRequestBody,
   buildRecommendationAssistantText,
+  buildRecommendationDecisionBrief,
   canUseMaxDistancePreference,
   getRecommendationFeedbackState,
+  getRecommendationOpenStatusLabel,
   isNearbyRecommendationSeed,
   shouldWaitForLocationBeforeRecommendation,
   shouldUseOriginLocationAsCurrentLocation,
@@ -62,6 +64,22 @@ test("renders TastePick brand on the home screen without auto-fetching nearby re
   screen.getByText("내 주변 맛집 추천");
   await waitFor(() => expect(fetchMock).toHaveBeenCalled());
   expect(fetchMock.mock.calls.some(([input]) => String(input || "").includes("/recommend"))).toBe(false);
+});
+
+test("builds a trust-focused decision brief for recommendation cards", () => {
+  expect(
+    buildRecommendationDecisionBrief({
+      distanceKm: 1.8,
+      travelDuration: "11분",
+      openNow: true,
+    }),
+  ).toBe("1.8km · 11분 · 영업 중");
+
+  expect(
+    getRecommendationOpenStatusLabel({
+      businessStatus: "CLOSED_TEMPORARILY",
+    }),
+  ).toBe("임시 휴업");
 });
 
 test("does not promote IP fallback coordinates to the current location", () => {

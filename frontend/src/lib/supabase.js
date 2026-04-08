@@ -7,16 +7,98 @@ export const hasSupabaseAuthConfig = Boolean(SUPABASE_URL && SUPABASE_PUBLISHABL
 
 let supabaseClient = null;
 
+function createMemoryStorage() {
+  const map = new Map();
+
+  return {
+    get length() {
+      return map.size;
+    },
+    key(index) {
+      return [...map.keys()][index] ?? null;
+    },
+    getItem(key) {
+      return map.has(key) ? map.get(key) : null;
+    },
+    setItem(key, value) {
+      map.set(key, String(value));
+    },
+    removeItem(key) {
+      map.delete(key);
+    },
+  };
+}
+
+function getBrowserStorageCandidates() {
+  if (typeof window === "undefined") return [];
+  try {
+    return [window.localStorage, window.sessionStorage].filter((storage) => storage && typeof storage.length === "number");
+  } catch {
+    return [];
+  }
+}
+
+export function buildSupabaseStoragePrefix(supabaseUrl = SUPABASE_URL) {
+  try {
+    const hostname = new URL(String(supabaseUrl || "").trim()).hostname;
+    const projectRef = hostname.split(".")[0];
+    return projectRef ? `sb-${projectRef}-auth-token` : "";
+  } catch {
+    return "";
+  }
+}
+
+export function clearSupabaseAuthStorage(storages = getBrowserStorageCandidates(), supabaseUrl = SUPABASE_URL) {
+  const prefix = buildSupabaseStoragePrefix(supabaseUrl);
+  if (!prefix) return;
+
+  for (const storage of storages) {
+    try {
+      const keys = [];
+      for (let index = 0; index < storage.length; index += 1) {
+        const key = storage.key(index);
+        if (key?.startsWith(prefix)) {
+          keys.push(key);
+        }
+      }
+      keys.forEach((key) => storage.removeItem(key));
+    } catch {}
+  }
+}
+
+export async function clearSupabaseBridgeSession(client = getSupabaseClient()) {
+  try {
+    await client?.auth?.signOut?.({ scope: "local" });
+  } catch {}
+
+  clearSupabaseAuthStorage();
+}
+
+export function getSupabaseBridgeStorage() {
+  if (typeof window === "undefined") {
+    return createMemoryStorage();
+  }
+
+  try {
+    if (window.sessionStorage && typeof window.sessionStorage.length === "number") {
+      return window.sessionStorage;
+    }
+  } catch {}
+
+  return createMemoryStorage();
+}
+
 export function getSupabaseClient() {
   if (!hasSupabaseAuthConfig) return null;
 
   if (!supabaseClient) {
     supabaseClient = createClient(SUPABASE_URL, SUPABASE_PUBLISHABLE_KEY, {
       auth: {
-        autoRefreshToken: true,
+        autoRefreshToken: false,
         detectSessionInUrl: true,
         flowType: "pkce",
         persistSession: true,
+        storage: getSupabaseBridgeStorage(),
       },
     });
   }

@@ -5,6 +5,7 @@ import GoogleRouteMap from "./GoogleRouteMap";
 import MapDirectionsPage from "./MapDirectionsPage";
 import {
   buildSupabaseGoogleRedirectUrl,
+  clearSupabaseBridgeSession,
   getSupabaseClient,
   hasSupabaseAuthConfig,
   isSupabaseGoogleSession,
@@ -147,6 +148,34 @@ export function getRecommendationFeedbackState({ loading, hasRecommendationRespo
   return "idle";
 }
 
+export function getRecommendationOpenStatusLabel(item = {}) {
+  if (item?.openNow === true) return "영업 중";
+  if (item?.openNow === false) return "영업 종료";
+
+  const businessStatus = String(item?.businessStatus || "").trim().toUpperCase();
+  if (businessStatus === "CLOSED_TEMPORARILY") return "임시 휴업";
+  if (businessStatus === "CLOSED_PERMANENTLY") return "영업 종료";
+
+  return "영업 정보 확인 필요";
+}
+
+export function buildRecommendationDecisionBrief(item = {}) {
+  const parts = [];
+
+  if (item?.distanceKm != null) {
+    parts.push(`${item.distanceKm.toFixed(1)}km`);
+  } else if (typeof item?.locationText === "string" && item.locationText.trim()) {
+    parts.push(item.locationText.trim());
+  }
+
+  if (typeof item?.travelDuration === "string" && item.travelDuration.trim()) {
+    parts.push(item.travelDuration.trim());
+  }
+
+  parts.push(getRecommendationOpenStatusLabel(item));
+  return [...new Set(parts.filter(Boolean))].join(" · ");
+}
+
 export function buildAiQuickAccessItems(history = [], popularTags = []) {
   const recentItems = history
     .slice(0, 3)
@@ -226,6 +255,8 @@ const DEMO_ITEMS = [
     distanceKm: 1.2,
     travelDuration: "12분",
     routeSummary: "강남역에서 직진 후 우회전, 도보 12분",
+    openNow: true,
+    businessStatus: "OPERATIONAL",
     links: {
       googleMap: "https://www.google.com/maps/search/?api=1&query=%EC%9D%80%ED%99%94%EC%A0%95%20%EA%B0%95%EB%82%A8",
       googleDirections:
@@ -247,6 +278,8 @@ const DEMO_ITEMS = [
     distanceKm: 0.8,
     travelDuration: "10분",
     routeSummary: "서초대로를 따라 직진하면 바로 도착합니다.",
+    openNow: true,
+    businessStatus: "OPERATIONAL",
     links: {
       googleMap: "https://www.google.com/maps/search/?api=1&query=%EB%8D%94%20%ED%8C%8C%EC%8A%A4%ED%83%80%20%EB%B2%A0%EB%84%A4",
       googleDirections:
@@ -268,6 +301,8 @@ const DEMO_ITEMS = [
     distanceKm: 2.1,
     travelDuration: "18분",
     routeSummary: "대로변을 따라 이동 후 골목 안쪽으로 들어오면 바로 보입니다.",
+    openNow: false,
+    businessStatus: "OPERATIONAL",
     links: {
       googleMap: "https://www.google.com/maps/search/?api=1&query=%EC%8A%A4%EC%8B%9C%20%EC%9C%A0%EC%9C%A0",
       googleDirections:
@@ -480,6 +515,18 @@ function enrichItem(raw, index) {
         : hasRawItem
           ? ""
           : fallback.routeSummary,
+    openNow:
+      typeof raw?.openNow === "boolean"
+        ? raw.openNow
+        : hasRawItem
+          ? null
+          : fallback.openNow ?? null,
+    businessStatus:
+      typeof raw?.businessStatus === "string"
+        ? raw.businessStatus
+        : hasRawItem
+          ? ""
+          : fallback.businessStatus || "",
     links: raw?.links && typeof raw.links === "object" ? raw.links : fallback.links,
     phoneLabel: raw?.phoneLabel || fallback.phoneLabel,
   };
@@ -721,6 +768,8 @@ function Footer({ isMobileDevice }) {
 }
 
 function ResultCard({ item, saved, onToggleFavorite, onOpen, onOpenMap, badgeLabel }) {
+  const decisionBrief = buildRecommendationDecisionBrief(item);
+
   function openDetail() {
     onOpen(item);
   }
@@ -772,6 +821,9 @@ function ResultCard({ item, saved, onToggleFavorite, onOpen, onOpenMap, badgeLab
           ))}
         </div>
         <h3 className="mb-2 font-headline text-2xl font-black text-on-surface">{item.name}</h3>
+        {decisionBrief ? (
+          <p className="mb-3 text-sm font-black tracking-[0.01em] text-primary">{decisionBrief}</p>
+        ) : null}
         <p className="min-h-[52px] font-medium leading-relaxed text-on-surface-variant">{item.reason}</p>
         {item.address ? (
           <p className="mt-3 text-sm font-semibold leading-relaxed text-on-surface">
@@ -1478,6 +1530,9 @@ export default function App() {
   const aiRecommendationReasonClassName = isMobileDevice
     ? "mb-4 text-base font-medium leading-relaxed text-stone-700"
     : "mb-4 text-sm font-medium leading-relaxed text-stone-700";
+  const aiRecommendationBriefClassName = isMobileDevice
+    ? "mb-3 text-sm font-black tracking-[0.01em] text-primary"
+    : "mb-3 text-xs font-black tracking-[0.01em] text-primary";
   const aiRecommendationTagsClassName = isMobileDevice ? "flex flex-wrap gap-2.5" : "flex gap-2";
   const aiRecommendationTagClassName = isMobileDevice
     ? "rounded bg-surface-container px-3 py-1.5 text-xs font-black uppercase text-stone-700"
@@ -1959,10 +2014,7 @@ export default function App() {
         body: JSON.stringify({ accessToken: session.access_token }),
       });
 
-      const supabase = getSupabaseClient();
-      try {
-        await supabase?.auth.signOut({ scope: "local" });
-      } catch {}
+      await clearSupabaseBridgeSession(getSupabaseClient());
 
       if (typeof window !== "undefined") {
         const nextUrl = stripSupabaseAuthParams(window.location.href);
@@ -1978,6 +2030,11 @@ export default function App() {
       setMessage(buildMessage("ok", "Google 계정으로 로그인했습니다."));
     } catch (error) {
       oauthExchangeTokenRef.current = "";
+      await clearSupabaseBridgeSession(getSupabaseClient());
+      if (typeof window !== "undefined") {
+        const nextUrl = stripSupabaseAuthParams(window.location.href);
+        window.history.replaceState(window.history.state, "", nextUrl);
+      }
       throw error;
     } finally {
       setAuthLoading(false);
@@ -3158,37 +3215,44 @@ export default function App() {
                           <p className={aiAssistantTextClassName}>{entry.text}</p>
                           {entry.items?.length ? (
                             <div className={aiRecommendationGridClassName}>
-                              {entry.items.map((item) => (
-                                <button
-                                  key={item.id}
-                                  className={aiRecommendationCardClassName}
-                                  type="button"
-                                  onClick={() => openItem(item, "detail")}
-                                >
-                                  <div className={aiRecommendationImageClassName}>
-                                    <img alt={item.name} className="h-full w-full object-cover" src={item.imageUrl} />
-                                  </div>
-                                  <div className={aiRecommendationBodyClassName}>
-                                    <div className={aiRecommendationHeaderClassName}>
-                                      <h3 className={aiRecommendationTitleClassName}>{item.name}</h3>
-                                      <span className={aiRecommendationMetaClassName}>
-                                        {item.address || item.locationText}
-                                      </span>
+                              {entry.items.map((item) => {
+                                const decisionBrief = buildRecommendationDecisionBrief(item);
+
+                                return (
+                                  <button
+                                    key={item.id}
+                                    className={aiRecommendationCardClassName}
+                                    type="button"
+                                    onClick={() => openItem(item, "detail")}
+                                  >
+                                    <div className={aiRecommendationImageClassName}>
+                                      <img alt={item.name} className="h-full w-full object-cover" src={item.imageUrl} />
                                     </div>
-                                    <p className={aiRecommendationReasonClassName}>{item.reason}</p>
-                                    <div className={aiRecommendationTagsClassName}>
-                                      {item.keywords.slice(0, 2).map((tag) => (
-                                        <span
-                                          key={tag}
-                                          className={aiRecommendationTagClassName}
-                                        >
-                                          {tag}
+                                    <div className={aiRecommendationBodyClassName}>
+                                      <div className={aiRecommendationHeaderClassName}>
+                                        <h3 className={aiRecommendationTitleClassName}>{item.name}</h3>
+                                        <span className={aiRecommendationMetaClassName}>
+                                          {item.address || item.locationText}
                                         </span>
-                                      ))}
+                                      </div>
+                                      {decisionBrief ? (
+                                        <p className={aiRecommendationBriefClassName}>{decisionBrief}</p>
+                                      ) : null}
+                                      <p className={aiRecommendationReasonClassName}>{item.reason}</p>
+                                      <div className={aiRecommendationTagsClassName}>
+                                        {item.keywords.slice(0, 2).map((tag) => (
+                                          <span
+                                            key={tag}
+                                            className={aiRecommendationTagClassName}
+                                          >
+                                            {tag}
+                                          </span>
+                                        ))}
+                                      </div>
                                     </div>
-                                  </div>
-                                </button>
-                              ))}
+                                  </button>
+                                );
+                              })}
                             </div>
                           ) : null}
                         </div>
