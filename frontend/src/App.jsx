@@ -94,6 +94,19 @@ export function shouldWaitForLocationBeforeRecommendation(currentLocation) {
   return !canUseMaxDistancePreference(currentLocation);
 }
 
+export function buildRecommendationRequestBody({
+  input,
+  currentLocation,
+  targetView = "ai",
+  openNowOnly = false,
+}) {
+  return {
+    input,
+    ...(currentLocation ? { currentLocation } : {}),
+    ...(targetView === "ai" && openNowOnly ? { openNowOnly: true } : {}),
+  };
+}
+
 export function isMobileDeviceEnvironment() {
   if (typeof navigator === "undefined") return false;
   if (typeof navigator.userAgentData?.mobile === "boolean") {
@@ -1133,6 +1146,7 @@ export default function App() {
   const [savingPreferences, setSavingPreferences] = useState(false);
   const [loading, setLoading] = useState(false);
   const [activeView, setActiveView] = useState("home");
+  const [openNowOnly, setOpenNowOnly] = useState(false);
   const [query, setQuery] = useState("");
   const [chatInput, setChatInput] = useState("");
   const [items, setItems] = useState([]);
@@ -2223,10 +2237,14 @@ export default function App() {
         "/recommend",
         {
           method: "POST",
-          body: JSON.stringify({
-            input: trimmed,
-            ...(resolvedCurrentLocation ? { currentLocation: resolvedCurrentLocation } : {}),
-          }),
+          body: JSON.stringify(
+            buildRecommendationRequestBody({
+              input: trimmed,
+              currentLocation: resolvedCurrentLocation,
+              targetView,
+              openNowOnly,
+            }),
+          ),
         },
         token,
       );
@@ -2900,6 +2918,29 @@ export default function App() {
             </div>
 
             <div className={aiInputContainerClassName}>
+              <div className="mb-3 flex items-center justify-between rounded-[1.2rem] border border-outline-variant/20 bg-surface-container-low px-4 py-3">
+                <div>
+                  <p className="text-sm font-black text-on-surface">영업 중만 보기</p>
+                  <p className="text-xs text-on-surface-variant">
+                    AI 채팅 추천에서 현재 영업 중인 곳만 우선 보여줍니다.
+                  </p>
+                </div>
+                <button
+                  aria-pressed={openNowOnly}
+                  className={`relative inline-flex h-8 w-14 items-center rounded-full transition-colors ${
+                    openNowOnly ? "bg-primary" : "bg-outline-variant/40"
+                  }`}
+                  type="button"
+                  onClick={() => setOpenNowOnly((current) => !current)}
+                >
+                  <span
+                    className={`inline-block h-6 w-6 rounded-full bg-white shadow-sm transition-transform ${
+                      openNowOnly ? "translate-x-7" : "translate-x-1"
+                    }`}
+                  />
+                  <span className="sr-only">영업 중만 보기 토글</span>
+                </button>
+              </div>
               <div className={aiInputRowClassName}>
                 <div className="relative flex-1">
                   <input

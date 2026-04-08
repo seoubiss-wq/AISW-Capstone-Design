@@ -14,6 +14,9 @@ const {
   buildNearbyRadiusMeters,
   shouldUseNearbyCandidateSearch,
 } = require("./scripts/shared/placesSearchStrategy");
+const {
+  parseOpenNowOnly,
+} = require("./scripts/shared/openStatus");
 
 const app = express();
 app.set("trust proxy", true);
@@ -1849,6 +1852,7 @@ async function buildRecommendationsFromPlaces(
   const publicOrigin = String(options.publicOrigin || API_PUBLIC_ORIGIN || "").replace(/\/$/, "");
   const baseQuery = `${input}`.trim();
   const maxDistanceKm = parseMaxDistanceKm(preferences.maxDistanceKm);
+  const openNowOnly = Boolean(options.openNowOnly);
   const origin = await resolveOriginLocation(
     parseCurrentLocation(options.currentLocation),
   );
@@ -1862,7 +1866,7 @@ async function buildRecommendationsFromPlaces(
     ? await fetchDistanceMatrix(origin.location, candidatePlaces)
     : new Map();
 
-  const food = candidates
+  const distanceFilteredCandidates = candidates
     .map(({ place, queryIndex, matchedQuery }, index) => {
       const location = place.geometry?.location;
       const matrixEntry = matrix.get(place.place_id || `${index}`) || null;
@@ -1884,6 +1888,49 @@ async function buildRecommendationsFromPlaces(
             : null;
 
       const distanceKm = matrixEntry?.distanceKm ?? fallbackDistanceKm;
+
+      return {
+        place,
+        distanceKm,
+        distanceText: matrixEntry?.distanceText || "",
+        durationText: matrixEntry?.durationText || "",
+        queryIndex,
+        matchedQuery,
+      };
+    })
+    .filter(({ distanceKm }) => (maxDistanceKm ? distanceKm != null && distanceKm <= maxDistanceKm : true));
+
+  const candidatesForScoring = openNowOnly
+    ? (
+        await Promise.all(
+          distanceFilteredCandidates.map(async (candidate) => {
+            const placeId = String(candidate.place?.place_id || "").trim();
+            if (!placeId) return null;
+
+            try {
+              const details = await fetchGooglePlaceDetails(placeId);
+              if (!details?.openNow) {
+                return null;
+              }
+
+              return {
+                ...candidate,
+                placeDetails: details,
+              };
+            } catch (error) {
+              console.warn(
+                `Failed to fetch place details for ${placeId}:`,
+                error?.message || error,
+              );
+              return null;
+            }
+          }),
+        )
+      ).filter(Boolean)
+    : distanceFilteredCandidates;
+
+  const food = candidatesForScoring
+    .map(({ place, distanceKm, distanceText, durationText, queryIndex, matchedQuery }) => {
       const preferenceScore = scorePlaceForPreferences(place, preferences, {
         distanceKm,
         queryIndex,
@@ -1893,15 +1940,14 @@ async function buildRecommendationsFromPlaces(
       return {
         place,
         distanceKm,
-        distanceText: matrixEntry?.distanceText || "",
-        durationText: matrixEntry?.durationText || "",
+        distanceText,
+        durationText,
         queryIndex,
         matchedQuery,
         preferenceScore: preferenceScore.score,
         preferenceSignals: preferenceScore.signals,
       };
     })
-    .filter(({ distanceKm }) => (maxDistanceKm ? distanceKm != null && distanceKm <= maxDistanceKm : true))
     .sort((left, right) => {
       if (right.preferenceScore !== left.preferenceScore) {
         return right.preferenceScore - left.preferenceScore;
@@ -2496,6 +2542,7 @@ app.post("/recommend", optionalAuth, async (req, res) => {
   const raw = req.body?.input;
   const input = typeof raw === "string" ? raw.trim() : "";
   const currentLocation = parseCurrentLocation(req.body?.currentLocation);
+  const openNowOnly = parseOpenNowOnly(req.body?.openNowOnly);
 
   if (!input) {
     return res.status(400).json({
@@ -2517,6 +2564,9 @@ app.post("/recommend", optionalAuth, async (req, res) => {
     { hasCurrentLocation: Boolean(currentLocation) },
   );
   const personalizationText = buildPersonalizationText(preferences);
+  const appliedPreferenceText = [personalizationText, openNowOnly ? "영업 중만 보기" : ""]
+    .filter(Boolean)
+    .join(", ");
   const finalInput = personalizationText
     ? `${input}. 媛쒖씤??議곌굔: ${personalizationText}`
     : input;
@@ -2529,7 +2579,7 @@ app.post("/recommend", optionalAuth, async (req, res) => {
     Boolean(req.user?.activePreferenceSheetId);
   const cacheKey = shouldBypassCache
     ? null
-    : `${RESPONSE_CACHE_VERSION}|${finalInput}|${locationKey}`;
+    : `${RESPONSE_CACHE_VERSION}|${finalInput}|${locationKey}|open-now:${openNowOnly ? "1" : "0"}`;
   if (cacheKey && cache[cacheKey]) {
     const cached = cache[cacheKey];
     const cachedPayload = Array.isArray(cached)
@@ -2547,7 +2597,7 @@ app.post("/recommend", optionalAuth, async (req, res) => {
         };
     return res.json({
       items: cachedPayload.items,
-      personalizationApplied: personalizationText,
+      personalizationApplied: appliedPreferenceText,
       originLocation: cachedPayload.originLocation,
       originSource: cachedPayload.originSource,
       originAccuracyMeters: cachedPayload.originAccuracyMeters,
@@ -2558,6 +2608,7 @@ app.post("/recommend", optionalAuth, async (req, res) => {
     const recommendationPayload = GOOGLE_MAPS_API_KEY
       ? await buildRecommendationsFromPlaces(input, preferences, {
           currentLocation,
+          openNowOnly,
           publicOrigin: resolvePublicOrigin(req),
         })
       : {
@@ -2584,7 +2635,7 @@ app.post("/recommend", optionalAuth, async (req, res) => {
           {
             id: crypto.randomUUID(),
             query: input,
-            personalizationApplied: personalizationText,
+            personalizationApplied: appliedPreferenceText,
             createdAt: new Date().toISOString(),
           },
         ].slice(-MAX_HISTORY),
@@ -2593,7 +2644,7 @@ app.post("/recommend", optionalAuth, async (req, res) => {
 
     return res.json({
       items,
-      personalizationApplied: personalizationText,
+      personalizationApplied: appliedPreferenceText,
       originLocation: origin?.location || null,
       originSource: origin?.source || "",
       originAccuracyMeters: origin?.accuracyMeters ?? null,

@@ -2,6 +2,7 @@ import { afterEach, expect, test, vi } from "vitest";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { render, screen } from "@testing-library/react";
 import App, {
+  buildRecommendationRequestBody,
   buildRecommendationAssistantText,
   canUseMaxDistancePreference,
   getRecommendationFeedbackState,
@@ -117,4 +118,31 @@ test("waits for location resolution whenever coordinates are missing", () => {
   expect(
     shouldWaitForLocationBeforeRecommendation({ lat: 37.5665, lng: 126.978 }),
   ).toBe(false);
+});
+
+test("adds the open-now filter only for AI recommendations", () => {
+  expect(
+    buildRecommendationRequestBody({
+      input: "강남 맛집 추천",
+      currentLocation: { lat: 37.5665, lng: 126.978 },
+      targetView: "ai",
+      openNowOnly: true,
+    }),
+  ).toEqual({
+    input: "강남 맛집 추천",
+    currentLocation: { lat: 37.5665, lng: 126.978 },
+    openNowOnly: true,
+  });
+
+  expect(
+    buildRecommendationRequestBody({
+      input: "강남 맛집 추천",
+      currentLocation: { lat: 37.5665, lng: 126.978 },
+      targetView: "recommend",
+      openNowOnly: true,
+    }),
+  ).toEqual({
+    input: "강남 맛집 추천",
+    currentLocation: { lat: 37.5665, lng: 126.978 },
+  });
 });
