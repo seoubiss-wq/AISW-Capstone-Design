@@ -1407,10 +1407,6 @@ export default function App() {
   const recentQuestions = history.slice(0, 3);
   const hasAiQuickAccess = recentQuestions.length > 0 || POPULAR_TAGS.length > 0;
   const favoriteNames = new Set(favorites.map((item) => item.name.toLowerCase()));
-  const homeVoiceCardBody = voiceListening
-    ? voiceDraft || "원하는 메뉴, 분위기, 위치를 말씀해 주세요."
-    : "말로 원하는 분위기와 메뉴를 알려주면 바로 추천을 시작합니다.";
-  const homeVoiceCardCta = voiceListening ? "듣는 중..." : "음성 검색 시작";
   const chatInputPlaceholder = voiceListening
     ? voiceDraft || "말씀을 듣고 있습니다..."
     : "메시지를 입력하세요...";
@@ -2195,7 +2191,7 @@ export default function App() {
   }
 
   async function runRecommendation(nextQuery, targetView = "ai", options = {}) {
-    const { skipChat = false } = options;
+    const { skipChat = false, openNowOnlyOverride } = options;
     if (false && !token) {
       setMode("login");
       setMessage(buildMessage("error", "로그인 후 추천을 받아보세요."));
@@ -2242,7 +2238,10 @@ export default function App() {
               input: trimmed,
               currentLocation: resolvedCurrentLocation,
               targetView,
-              openNowOnly,
+              openNowOnly:
+                typeof openNowOnlyOverride === "boolean"
+                  ? openNowOnlyOverride
+                  : openNowOnly,
             }),
           ),
         },
@@ -2356,6 +2355,32 @@ export default function App() {
     } catch (error) {
       handleRequestError(error);
     }
+  }
+
+  const homePreviewItems = recommendItems.slice(0, isMobileDevice ? 2 : 3);
+  const homeLocationReady = maxDistanceEnabled;
+  const homeLocationBadgeClassName = homeLocationReady
+    ? "bg-[#e7f6ec] text-[#1f6a3a]"
+    : "bg-primary-container/30 text-primary";
+
+  function handleHomeNearbyStart() {
+    setOpenNowOnly(false);
+    runRecommendation("내 주변 맛집 추천", "recommend", {
+      skipChat: true,
+      openNowOnlyOverride: false,
+    });
+  }
+
+  function handleHomeAiStart() {
+    setOpenNowOnly(false);
+    setActiveView("ai");
+  }
+
+  function handleHomeOpenNowStart() {
+    setOpenNowOnly(true);
+    runRecommendation("내 주변 맛집 추천", "ai", {
+      openNowOnlyOverride: true,
+    });
   }
 
   async function removeHistoryEntry(id) {
@@ -2501,76 +2526,166 @@ export default function App() {
 
       {activeView === "home" ? (
         <main className={homeMainClassName}>
-          <section className="max-w-4xl py-12 md:py-20">
-            <h1 className="font-headline text-4xl font-black leading-tight tracking-tight text-on-surface md:text-6xl">
-              반가워요!
-              <br />
-              오늘은 어떤 <span className="text-primary">맛있는 이야기</span>를 나눠볼까요?
-            </h1>
-            <p className="mt-6 text-xl font-medium leading-relaxed text-on-surface-variant md:text-2xl">
-              당신의 취향과 가장 잘 맞는 인공지능이 최적의 미식 경험을 추천해 드립니다.
-            </p>
-          </section>
-
-          <section className="mb-20 grid grid-cols-1 gap-6 md:grid-cols-2">
-            <button
-              className="group relative flex min-h-[320px] flex-col justify-between overflow-hidden rounded-[2rem] bg-primary p-10 text-left text-white"
-              type="button"
-              onClick={() => setActiveView("ai")}
-            >
-              <div className="absolute right-0 top-0 p-8 opacity-20">
-                <span className="material-symbols-outlined text-[120px]">chat_bubble</span>
-              </div>
-              <div>
-                <span className="mb-6 inline-flex rounded-2xl bg-white/20 p-3">
-                  <span className="material-symbols-outlined filled-icon text-3xl">smart_toy</span>
+          <section className="mb-10 rounded-[2rem] bg-surface-container-low px-6 py-8 shadow-sm md:px-8 md:py-10">
+            <div className="flex flex-col gap-6 md:flex-row md:items-end md:justify-between">
+              <div className="max-w-3xl">
+                <span
+                  className={`inline-flex rounded-full px-4 py-2 text-xs font-black uppercase tracking-[0.18em] ${homeLocationBadgeClassName}`}
+                >
+                  {homeLocationReady ? "위치 확인됨" : "위치 필요"}
                 </span>
-                <h2 className="mb-2 text-3xl font-extrabold">대화로 찾기</h2>
-                <p className="text-lg font-medium">
-                  “오늘 점심으로 먹기 좋은 따뜻한 국물 요리 알려줘”
+                <h1 className="mt-4 font-headline text-4xl font-black leading-tight tracking-tight text-on-surface md:text-6xl">
+                  지금 어디서 먹을까?
+                </h1>
+                <p className="mt-4 text-lg font-medium leading-relaxed text-on-surface-variant md:text-2xl">
+                  {homeLocationReady
+                    ? "현재 위치와 취향을 반영해 바로 갈 만한 식당을 추천해드려요."
+                    : "위치를 허용하면 내 주변 기준으로 더 정확하게 추천해드려요."}
+                </p>
+                <p className="mt-3 text-sm font-semibold text-on-surface-variant md:text-base">
+                  {locationStatus}
                 </p>
               </div>
-              <div className="flex items-center text-xl font-extrabold transition-transform group-hover:translate-x-2">
-                채팅 시작하기 <span className="material-symbols-outlined ml-2">arrow_forward</span>
+              <div className="flex flex-wrap gap-3">
+                <button
+                  className="rounded-full bg-white px-5 py-3 text-sm font-black text-primary shadow-sm"
+                  type="button"
+                  onClick={() => requestCurrentLocation()}
+                >
+                  {homeLocationReady ? "위치 새로고침" : "위치 허용"}
+                </button>
+                <button
+                  className="rounded-full bg-primary px-5 py-3 text-sm font-black text-white shadow-sm"
+                  type="button"
+                  onClick={handleHomeAiStart}
+                >
+                  AI 채팅 열기
+                </button>
               </div>
-            </button>
-
-            <button
-              className="group relative flex min-h-[320px] flex-col justify-between overflow-hidden rounded-[2rem] bg-surface-container-highest p-10 text-left"
-              type="button"
-              onClick={() => startVoiceSearch("recommend")}
-            >
-              <div className="absolute right-0 top-0 p-8 opacity-10">
-                <span className="material-symbols-outlined text-[120px] text-primary">
-                  {voiceListening ? "graphic_eq" : "mic"}
-                </span>
-              </div>
-              <div>
-                <span className="mb-6 inline-flex rounded-2xl bg-primary-container/20 p-3">
-                  <span className="material-symbols-outlined filled-icon text-3xl text-primary">
-                    {voiceListening ? "graphic_eq" : "mic"}
-                  </span>
-                </span>
-                <h2 className="mb-2 text-3xl font-extrabold text-on-surface">목소리로 찾기</h2>
-                <p className="text-lg font-medium text-on-surface-variant">{homeVoiceCardBody}</p>
-              </div>
-              <div className="flex items-center text-xl font-extrabold text-primary transition-transform group-hover:translate-x-2">
-                {homeVoiceCardCta}{" "}
-                <span className="material-symbols-outlined ml-2">
-                  {voiceListening ? "graphic_eq" : "arrow_forward"}
-                </span>
-              </div>
-            </button>
+            </div>
           </section>
 
-          <section>
-            <div className="mb-10 flex items-end justify-between">
+          <section className="mb-12">
+            <div className="mb-5">
+              <h2 className="font-headline text-3xl font-black text-on-surface md:text-4xl">
+                빠르게 시작하기
+              </h2>
+              <p className="mt-2 text-lg font-medium text-on-surface-variant">
+                지금 가장 자주 쓰는 시작 경로만 앞에 두었습니다.
+              </p>
+            </div>
+
+            <div className="grid grid-cols-1 gap-5 md:grid-cols-3">
+              <section className="rounded-[1.75rem] bg-white p-6 shadow-sm ring-1 ring-black/5">
+                <span className="inline-flex rounded-2xl bg-primary-container/20 p-3 text-primary">
+                  <span className="material-symbols-outlined filled-icon text-3xl">near_me</span>
+                </span>
+                <h3 className="mt-5 text-2xl font-black text-on-surface">내 주변 맛집 추천</h3>
+                <p className="mt-3 text-base font-medium leading-relaxed text-on-surface-variant">
+                  현재 위치와 이동 거리 기준으로 바로 갈 만한 곳을 추천합니다.
+                </p>
+                <button
+                  className="mt-6 inline-flex items-center gap-2 rounded-full bg-primary px-5 py-3 text-sm font-black text-white"
+                  type="button"
+                  onClick={handleHomeNearbyStart}
+                >
+                  바로 추천받기 <span className="material-symbols-outlined text-lg">arrow_forward</span>
+                </button>
+              </section>
+
+              <section className="rounded-[1.75rem] bg-white p-6 shadow-sm ring-1 ring-black/5">
+                <span className="inline-flex rounded-2xl bg-primary-container/20 p-3 text-primary">
+                  <span className="material-symbols-outlined filled-icon text-3xl">smart_toy</span>
+                </span>
+                <h3 className="mt-5 text-2xl font-black text-on-surface">AI로 조건 말하기</h3>
+                <p className="mt-3 text-base font-medium leading-relaxed text-on-surface-variant">
+                  음식, 분위기, 예산을 자연어로 말하면 조건을 바로 조합해 줍니다.
+                </p>
+                <div className="mt-6 flex flex-wrap gap-3">
+                  <button
+                    className="inline-flex items-center gap-2 rounded-full bg-primary px-5 py-3 text-sm font-black text-white"
+                    type="button"
+                    onClick={handleHomeAiStart}
+                  >
+                    채팅으로 시작 <span className="material-symbols-outlined text-lg">chat</span>
+                  </button>
+                  <button
+                    className="inline-flex items-center gap-2 rounded-full bg-secondary-container px-5 py-3 text-sm font-black text-on-secondary-container"
+                    type="button"
+                    onClick={() => startVoiceSearch("ai")}
+                  >
+                    {voiceListening ? "듣는 중..." : "음성으로 시작"}
+                    <span className="material-symbols-outlined text-lg">
+                      {voiceListening ? "graphic_eq" : "mic"}
+                    </span>
+                  </button>
+                </div>
+              </section>
+
+              <section className="rounded-[1.75rem] bg-white p-6 shadow-sm ring-1 ring-black/5">
+                <span className="inline-flex rounded-2xl bg-primary-container/20 p-3 text-primary">
+                  <span className="material-symbols-outlined filled-icon text-3xl">schedule</span>
+                </span>
+                <h3 className="mt-5 text-2xl font-black text-on-surface">영업 중인 곳만</h3>
+                <p className="mt-3 text-base font-medium leading-relaxed text-on-surface-variant">
+                  지금 실제로 열려 있는 곳만 먼저 추려서 빠르게 확인합니다.
+                </p>
+                <button
+                  className="mt-6 inline-flex items-center gap-2 rounded-full bg-primary px-5 py-3 text-sm font-black text-white"
+                  type="button"
+                  onClick={handleHomeOpenNowStart}
+                >
+                  영업 중만 보기 <span className="material-symbols-outlined text-lg">restaurant</span>
+                </button>
+              </section>
+            </div>
+          </section>
+
+          <section className="mb-12">
+            <div className="mb-4">
+              <h2 className="font-headline text-3xl font-black text-on-surface md:text-4xl">
+                이런 상황인가요?
+              </h2>
+              <p className="mt-2 text-lg font-medium text-on-surface-variant">
+                자주 찾는 상황을 눌러 바로 추천을 시작하세요.
+              </p>
+            </div>
+            <div className="flex flex-wrap gap-3">
+              {[
+                { label: "혼밥", prompt: "혼밥하기 좋은 맛집 추천" },
+                { label: "데이트", prompt: "데이트하기 좋은 맛집 추천" },
+                { label: "조용한 곳", prompt: "조용한 식당 추천" },
+                { label: "가성비", prompt: "가성비 좋은 맛집 추천" },
+                { label: "가까운 곳", prompt: "내 주변 가까운 맛집 추천" },
+                { label: "영업 중", prompt: "내 주변 맛집 추천", openNowOnly: true },
+              ].map((chip) => (
+                <button
+                  key={chip.label}
+                  className="rounded-full border border-outline-variant/20 bg-white px-5 py-3 text-sm font-black text-on-surface-variant shadow-sm transition-colors hover:bg-primary hover:text-white"
+                  type="button"
+                  onClick={() => {
+                    if (chip.openNowOnly) {
+                      handleHomeOpenNowStart();
+                      return;
+                    }
+                    setOpenNowOnly(false);
+                    runRecommendation(chip.prompt, "ai", { openNowOnlyOverride: false });
+                  }}
+                >
+                  {chip.label}
+                </button>
+              ))}
+            </div>
+          </section>
+
+          <section className="mb-12">
+            <div className="mb-6 flex items-end justify-between">
               <div>
                 <h2 className="font-headline text-3xl font-black text-on-surface md:text-4xl">
-                  오늘의 추천 맛집
+                  지금 갈 만한 곳
                 </h2>
                 <p className="mt-2 text-lg font-medium text-on-surface-variant">
-                  현재 위치와 선호도를 분석한 취향 기반 추천입니다.
+                  현재 위치와 취향을 반영해 바로 결정할 수 있는 추천만 먼저 보여드립니다.
                 </p>
               </div>
               <button
@@ -2578,13 +2693,13 @@ export default function App() {
                 type="button"
                 onClick={() => setActiveView("recommend")}
               >
-                전체 보기 <span className="material-symbols-outlined">chevron_right</span>
+                추천 탭 열기 <span className="material-symbols-outlined">chevron_right</span>
               </button>
             </div>
 
             {recommendItems.length ? (
-              <div className="grid grid-cols-1 gap-8 md:grid-cols-3">
-                {recommendItems.slice(0, 3).map((item) => (
+              <div className={`grid grid-cols-1 gap-8 ${isMobileDevice ? "" : "md:grid-cols-3"}`}>
+                {homePreviewItems.map((item) => (
                   <ResultCard
                     key={item.id}
                     badgeLabel={item.featureTags[0]}
@@ -2597,15 +2712,60 @@ export default function App() {
                 ))}
               </div>
             ) : recommendationFeedbackState === "loading" ? (
-              <RecommendationLoadingGrid columns={3} />
+              <RecommendationLoadingGrid columns={isMobileDevice ? 2 : 3} />
             ) : recommendationFeedbackState === "empty" ? (
               <RecommendationEmptyState
-                description="거리나 취향 조건을 조금 바꿔 다시 추천을 받아보세요."
+                description="거리와 취향 조건을 조금 바꿔 다시 추천을 받아보세요."
                 title="조건에 맞는 추천 식당이 아직 없습니다."
               />
-            ) : null}
+            ) : (
+              <div className="rounded-[1.75rem] bg-surface-container-low p-6 shadow-sm">
+                <p className="text-base font-semibold text-on-surface-variant">
+                  아직 추천을 시작하지 않았습니다. 빠른 시작 카드나 상황형 칩으로 바로 시작해 보세요.
+                </p>
+              </div>
+            )}
           </section>
 
+          {recentQuestions.length ? (
+            <section className="pb-4">
+              <div className="mb-4 flex items-end justify-between">
+                <div>
+                  <h2 className="font-headline text-3xl font-black text-on-surface md:text-4xl">
+                    최근 질문 이어서
+                  </h2>
+                  <p className="mt-2 text-lg font-medium text-on-surface-variant">
+                    최근에 찾던 조건을 다시 불러와 빠르게 이어갈 수 있습니다.
+                  </p>
+                </div>
+                <button
+                  className="hidden items-center gap-2 text-lg font-extrabold text-primary md:flex"
+                  type="button"
+                  onClick={() => setActiveView("ai")}
+                >
+                  AI 탭 열기 <span className="material-symbols-outlined">chevron_right</span>
+                </button>
+              </div>
+              <div className="grid grid-cols-1 gap-4 md:grid-cols-3">
+                {recentQuestions.map((entry) => (
+                  <button
+                    key={`home-recent-${entry.id}`}
+                    className="rounded-[1.4rem] bg-white p-5 text-left shadow-sm ring-1 ring-black/5 transition-colors hover:bg-primary hover:text-white"
+                    type="button"
+                    onClick={() => {
+                      setOpenNowOnly(false);
+                      runRecommendation(entry.query, "ai", { openNowOnlyOverride: false });
+                    }}
+                  >
+                    <p className="text-base font-black">{entry.query}</p>
+                    <span className="mt-3 block text-sm font-semibold opacity-80">
+                      {formatRelativeDate(entry.createdAt, "recently")}
+                    </span>
+                  </button>
+                ))}
+              </div>
+            </section>
+          ) : null}
         </main>
       ) : null}
 

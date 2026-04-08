@@ -40,6 +40,7 @@ test("renders TastePick brand on the home screen without auto-fetching nearby re
     </QueryClientProvider>,
   );
   expect(screen.getAllByText(/TastePick/i).length).toBeGreaterThan(0);
+  screen.getByText("내 주변 맛집 추천");
   expect(fetchMock).not.toHaveBeenCalled();
 });
 
