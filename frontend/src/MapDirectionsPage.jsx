@@ -180,11 +180,17 @@ export default function MapDirectionsPage({
   onRetry,
 }) {
   const [directionsOpen, setDirectionsOpen] = useState(false);
+  const [mobilePanelCollapsed, setMobilePanelCollapsed] = useState(false);
   const [lastAutoOpenSignal, setLastAutoOpenSignal] = useState(0);
 
   useEffect(() => {
     setDirectionsOpen(false);
+    setMobilePanelCollapsed(false);
   }, [mapSelectedItem?.id]);
+
+  useEffect(() => {
+    setMobilePanelCollapsed(false);
+  }, [directionsOpen]);
 
   useEffect(() => {
     if (!autoOpenDirectionsSignal || !mapSelectedItem) {
@@ -229,11 +235,13 @@ export default function MapDirectionsPage({
   const emptyActionsClassName = isMobileDevice
     ? "mt-8 flex flex-col gap-3 sm:flex-row sm:justify-center"
     : "mt-8 flex justify-center gap-3";
+  const mobilePanelTransformClassName =
+    isMobileDevice && mobilePanelCollapsed ? "translate-y-[calc(100%-5.25rem)]" : "translate-y-0";
   const leftPanelClassName = isMobileDevice
-    ? "route-panel-scroll absolute inset-x-3 bottom-3 top-auto z-20 max-h-[58vh] overflow-y-auto rounded-[1.75rem] bg-white/95 p-4 shadow-[0_30px_70px_rgba(0,0,0,0.16)] ring-1 ring-black/5 backdrop-blur"
+    ? `route-panel-scroll absolute inset-x-3 bottom-3 top-auto z-20 max-h-[58vh] overflow-y-auto rounded-[1.75rem] bg-white/95 p-4 shadow-[0_30px_70px_rgba(0,0,0,0.16)] ring-1 ring-black/5 backdrop-blur transition-transform duration-300 ease-out ${mobilePanelTransformClassName}`
     : "route-panel-scroll absolute bottom-4 left-4 top-20 z-20 w-[480px] max-w-[calc(100vw-2rem)] overflow-y-auto rounded-[2.2rem] bg-white/95 p-6 shadow-[0_30px_70px_rgba(0,0,0,0.16)] ring-1 ring-black/5 backdrop-blur xl:w-[540px]";
   const rightPanelClassName = isMobileDevice
-    ? "route-panel-scroll absolute inset-x-3 bottom-3 top-auto z-20 max-h-[62vh] overflow-y-auto rounded-[1.75rem] bg-white/95 p-4 shadow-[0_30px_70px_rgba(0,0,0,0.16)] ring-1 ring-black/5 backdrop-blur"
+    ? `route-panel-scroll absolute inset-x-3 bottom-3 top-auto z-20 max-h-[62vh] overflow-y-auto rounded-[1.75rem] bg-white/95 p-4 shadow-[0_30px_70px_rgba(0,0,0,0.16)] ring-1 ring-black/5 backdrop-blur transition-transform duration-300 ease-out ${mobilePanelTransformClassName}`
     : "route-panel-scroll absolute bottom-4 right-4 top-20 z-20 w-[470px] max-w-[calc(100vw-2rem)] overflow-y-auto rounded-[2.2rem] bg-white/95 p-6 shadow-[0_30px_70px_rgba(0,0,0,0.16)] ring-1 ring-black/5 backdrop-blur xl:w-[530px]";
   const heroImageClassName = isMobileDevice ? "relative h-52" : "relative h-64";
   const restaurantTitleClassName = isMobileDevice
@@ -326,6 +334,24 @@ export default function MapDirectionsPage({
 
         {!directionsOpen ? (
           <section className={leftPanelClassName}>
+            {isMobileDevice ? (
+              <button
+                aria-expanded={!mobilePanelCollapsed}
+                className="mb-4 flex w-full items-center justify-center gap-3 rounded-[1.15rem] bg-white/90 px-4 py-3 text-sm font-black text-on-surface-variant shadow-sm ring-1 ring-black/5 backdrop-blur"
+                type="button"
+                onClick={() => setMobilePanelCollapsed((current) => !current)}
+              >
+                <span className="h-1.5 w-12 rounded-full bg-on-surface-variant/25" />
+                <span>{mobilePanelCollapsed ? "카드 올리기" : "아래로 내려 지도 보기"}</span>
+                <span
+                  className={`material-symbols-outlined text-[1.3rem] transition-transform ${
+                    mobilePanelCollapsed ? "rotate-180" : ""
+                  }`}
+                >
+                  expand_more
+                </span>
+              </button>
+            ) : null}
             <div className="overflow-hidden rounded-[1.8rem] bg-surface-container-low shadow-sm">
               {mapSelectedItem.imageUrl ? (
                 <div className={heroImageClassName}>
@@ -482,6 +508,24 @@ export default function MapDirectionsPage({
 
         {directionsOpen ? (
           <aside className={rightPanelClassName}>
+            {isMobileDevice ? (
+              <button
+                aria-expanded={!mobilePanelCollapsed}
+                className="mb-4 flex w-full items-center justify-center gap-3 rounded-[1.15rem] bg-white/90 px-4 py-3 text-sm font-black text-on-surface-variant shadow-sm ring-1 ring-black/5 backdrop-blur"
+                type="button"
+                onClick={() => setMobilePanelCollapsed((current) => !current)}
+              >
+                <span className="h-1.5 w-12 rounded-full bg-on-surface-variant/25" />
+                <span>{mobilePanelCollapsed ? "카드 올리기" : "아래로 내려 지도 보기"}</span>
+                <span
+                  className={`material-symbols-outlined text-[1.3rem] transition-transform ${
+                    mobilePanelCollapsed ? "rotate-180" : ""
+                  }`}
+                >
+                  expand_more
+                </span>
+              </button>
+            ) : null}
             <div className={`rounded-[1.9rem] bg-gradient-to-br ${statusTone.panel} p-6`}>
               <div className="flex items-start justify-between gap-3">
                 <div>
