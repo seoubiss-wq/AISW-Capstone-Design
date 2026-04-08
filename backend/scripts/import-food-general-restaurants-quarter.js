@@ -4,6 +4,7 @@ const fs = require("fs");
 const path = require("path");
 const { Pool } = require("pg");
 const { TextDecoder } = require("util");
+const { buildDbSslConfig } = require("./shared/dbConfig");
 
 const DATABASE_URL = (
   process.env.DATABASE_URL ||
@@ -303,12 +304,7 @@ async function importQuarterSample() {
   const csvPath = resolveCsvFilePath();
   const pool = new Pool({
     connectionString: DATABASE_URL,
-    ssl:
-      process.env.DB_SSL === "disable" ||
-      DATABASE_URL.includes("localhost") ||
-      DATABASE_URL.includes("127.0.0.1")
-        ? false
-        : { rejectUnauthorized: false },
+    ssl: buildDbSslConfig({ connectionString: DATABASE_URL }),
     max: 2,
   });
 

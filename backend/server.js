@@ -1,9 +1,9 @@
-require("dotenv").config();
+const path = require("path");
+require("dotenv").config({ path: path.join(__dirname, ".env") });
 const express = require("express");
 const cors = require("cors");
 const crypto = require("crypto");
 const fs = require("fs");
-const path = require("path");
 const { Pool } = require("pg");
 const { GoogleGenAI } = require("@google/genai");
 const {
@@ -17,29 +17,24 @@ const {
 const {
   parseOpenNowOnly,
 } = require("./scripts/shared/openStatus");
+const { buildDbSslConfig } = require("./scripts/shared/dbConfig");
+const { runNonCriticalOperation } = require("./scripts/shared/nonCriticalOperation");
+const {
+  clearSessionCookie,
+  normalizeStoredSessionToken,
+  readSessionToken,
+  setSessionCookie,
+} = require("./scripts/shared/sessionAuth");
+const {
+  fetchSupabaseUserProfile,
+} = require("./scripts/shared/supabaseAuth");
+const {
+  buildAllowedCorsOrigins,
+  resolveCorsOrigin,
+} = require("./scripts/shared/corsConfig");
 
 const app = express();
 app.set("trust proxy", true);
-app.use(cors());
-app.use(express.json());
-
-function asyncHandler(handler) {
-  return function wrappedAsyncHandler(req, res, next) {
-    Promise.resolve(handler(req, res, next)).catch(next);
-  };
-}
-
-function resolvePublicOrigin(req) {
-  if (API_PUBLIC_ORIGIN) {
-    return API_PUBLIC_ORIGIN;
-  }
-
-  const forwardedProto = String(req.get("x-forwarded-proto") || "").split(",")[0].trim();
-  const forwardedHost = String(req.get("x-forwarded-host") || "").split(",")[0].trim();
-  const protocol = forwardedProto || req.protocol || "http";
-  const host = forwardedHost || req.get("host") || `localhost:${PORT}`;
-  return `${protocol}://${host}`.replace(/\/$/, "");
-}
 
 const API_KEY = process.env.GEMINI_API_KEY;
 const MODEL = process.env.GEMINI_MODEL || "gemini-3-flash-preview";
@@ -51,6 +46,8 @@ const DATABASE_URL = (
   process.env.SUPABASE_DATABASE_URL ||
   ""
 ).trim();
+const SUPABASE_URL = String(process.env.SUPABASE_URL || "").trim();
+const SUPABASE_PUBLISHABLE_KEY = String(process.env.SUPABASE_PUBLISHABLE_KEY || "").trim();
 const API_PUBLIC_ORIGIN = String(process.env.API_PUBLIC_ORIGIN || "").replace(/\/$/, "");
 const PORT = Number(process.env.PORT || 5500);
 const FRONTEND_BUILD_DIR = path.join(__dirname, "..", "frontend", "build");
@@ -61,7 +58,26 @@ if (!DATABASE_URL) {
   throw new Error("DATABASE_URL 또는 SUPABASE_DB_URL이 필요합니다.");
 }
 
-const RESPONSE_CACHE_VERSION = 6;
+const ALLOWED_CORS_ORIGINS = buildAllowedCorsOrigins({
+  apiPublicOrigin: API_PUBLIC_ORIGIN,
+  extraOrigins: process.env.CORS_ALLOWED_ORIGINS,
+});
+
+app.use(cors({
+  credentials: true,
+  origin(origin, callback) {
+    return callback(null, resolveCorsOrigin(origin, ALLOWED_CORS_ORIGINS));
+  },
+}));
+app.use(express.json());
+
+function asyncHandler(handler) {
+  return function wrappedAsyncHandler(req, res, next) {
+    Promise.resolve(handler(req, res, next)).catch(next);
+  };
+}
+
+const RESPONSE_CACHE_VERSION = 7;
 const cache = {};
 
 const PASSWORD_ITERATIONS = 120000;
@@ -117,12 +133,7 @@ const FOOD_PLACE_TYPES = new Set([
 
 const dbPool = new Pool({
   connectionString: DATABASE_URL,
-  ssl:
-    process.env.DB_SSL === "disable" ||
-    DATABASE_URL.includes("localhost") ||
-    DATABASE_URL.includes("127.0.0.1")
-      ? false
-      : { rejectUnauthorized: false },
+  ssl: buildDbSslConfig({ connectionString: DATABASE_URL }),
   max: 5,
 });
 
@@ -212,7 +223,7 @@ function ensureUserDataShape(user) {
   }
   user.sessions = user.sessions
     .map((session) => ({
-      token: String(session?.token || "").trim(),
+      token: normalizeStoredSessionToken(session?.token),
       expiresAt: Number(session?.expiresAt || 0),
     }))
     .filter((session) => session.token && session.expiresAt > Date.now())
@@ -654,7 +665,7 @@ async function persistUserGraph(user) {
           [
             crypto.randomUUID(),
             safe.id,
-            session.token,
+            normalizeStoredSessionToken(session.token),
             normalizeIsoString(session.expiresAt),
             normalizeIsoString(Date.now()),
           ],
@@ -683,16 +694,32 @@ async function getUserById(userId) {
 }
 
 async function getUserBySessionToken(token) {
+  const rawToken = String(token || "").trim();
+  if (!rawToken) return null;
+
+  const normalizedToken = normalizeStoredSessionToken(rawToken);
   await dbPool.query("delete from public.user_sessions where expires_at <= timezone('utc', now())");
   const result = await dbPool.query(
-    `select user_id
+    `select id, user_id, token
        from public.user_sessions
-      where token = $1
+      where token = any($1::text[])
         and expires_at > timezone('utc', now())
       limit 1`,
-    [token],
+    [[...new Set([normalizedToken, rawToken])]],
   );
-  return result.rowCount ? loadDbUserGraphById(result.rows[0].user_id) : null;
+  if (!result.rowCount) return null;
+
+  const matchedSession = result.rows[0];
+  if (matchedSession.token !== normalizedToken) {
+    await dbPool.query(
+      `update public.user_sessions
+          set token = $2
+        where id = $1`,
+      [matchedSession.id, normalizedToken],
+    );
+  }
+
+  return loadDbUserGraphById(matchedSession.user_id);
 }
 
 function hashPassword(password, salt = crypto.randomBytes(16).toString("hex")) {
@@ -700,6 +727,10 @@ function hashPassword(password, salt = crypto.randomBytes(16).toString("hex")) {
     .pbkdf2Sync(password, salt, PASSWORD_ITERATIONS, 64, "sha512")
     .toString("hex");
   return `${salt}:${hash}`;
+}
+
+function createUnusablePasswordHash() {
+  return hashPassword(crypto.randomBytes(48).toString("hex"));
 }
 
 function verifyPassword(password, storedHash) {
@@ -844,20 +875,14 @@ async function createSession(userId) {
   const expiresAt = Date.now() + TOKEN_TTL_MS;
   await updateUserById(userId, (current) => ({
     ...current,
-    sessions: [...(current.sessions || []), { token, expiresAt }].slice(-MAX_SESSIONS_PER_USER),
+    sessions: [...(current.sessions || []), { token: normalizeStoredSessionToken(token), expiresAt }]
+      .slice(-MAX_SESSIONS_PER_USER),
   }));
   return token;
 }
 
-function readBearerToken(req) {
-  const auth = req.headers.authorization || "";
-  const [scheme, token] = auth.split(" ");
-  if (scheme !== "Bearer" || !token) return null;
-  return token.trim();
-}
-
 async function requireAuth(req, res, next) {
-  const token = readBearerToken(req);
+  const token = readSessionToken(req);
   if (!token) {
     return res.status(401).json({ error: "로그인이 필요합니다." });
   }
@@ -865,10 +890,12 @@ async function requireAuth(req, res, next) {
   try {
     const matchedUser = await getUserBySessionToken(token);
     if (!matchedUser) {
+      clearSessionCookie(res, req, { publicOrigin: API_PUBLIC_ORIGIN });
       return res.status(401).json({ error: "로그인 세션이 만료되었습니다. 다시 로그인해 주세요." });
     }
 
     req.authToken = token;
+    req.authTokenHash = normalizeStoredSessionToken(token);
     req.user = sanitizeUser(matchedUser);
     next();
   } catch (error) {
@@ -877,16 +904,21 @@ async function requireAuth(req, res, next) {
 }
 
 async function optionalAuth(req, res, next) {
-  const token = readBearerToken(req);
+  const token = readSessionToken(req);
   if (!token) {
     req.authToken = null;
+    req.authTokenHash = null;
     req.user = null;
     return next();
   }
 
   try {
     const matchedUser = await getUserBySessionToken(token);
+    if (!matchedUser) {
+      clearSessionCookie(res, req, { publicOrigin: API_PUBLIC_ORIGIN });
+    }
     req.authToken = matchedUser ? token : null;
+    req.authTokenHash = matchedUser ? normalizeStoredSessionToken(token) : null;
     req.user = matchedUser ? sanitizeUser(matchedUser) : null;
     next();
   } catch (error) {
@@ -1294,7 +1326,15 @@ async function fetchGooglePlaceDetails(placeId) {
     throw new Error("GOOGLE_MAPS_API_KEY is not configured.");
   }
 
-  const cached = await getCachedPlaceDetails(placeId);
+  const cached = await runNonCriticalOperation(
+    () => getCachedPlaceDetails(placeId),
+    {
+      fallbackValue: null,
+      onError(error) {
+        console.warn(`[place-details-cache] read failed for ${placeId}: ${error.message}`);
+      },
+    },
+  );
   if (cached) {
     return cached;
   }
@@ -1352,7 +1392,15 @@ async function fetchGooglePlaceDetails(placeId) {
   }
 
   const normalized = normalizeLegacyPlaceDetails(payload?.result || {});
-  await savePlaceDetailsCache(normalized);
+  await runNonCriticalOperation(
+    () => savePlaceDetailsCache(normalized),
+    {
+      fallbackValue: null,
+      onError(error) {
+        console.warn(`[place-details-cache] write failed for ${placeId}: ${error.message}`);
+      },
+    },
+  );
   return normalized;
 }
 
@@ -1849,7 +1897,6 @@ async function buildRecommendationsFromPlaces(
   preferences = defaultPreferences(),
   options = {},
 ) {
-  const publicOrigin = String(options.publicOrigin || API_PUBLIC_ORIGIN || "").replace(/\/$/, "");
   const baseQuery = `${input}`.trim();
   const maxDistanceKm = parseMaxDistanceKm(preferences.maxDistanceKm);
   const openNowOnly = Boolean(options.openNowOnly);
@@ -2017,7 +2064,7 @@ async function buildRecommendationsFromPlaces(
 
       let imageUrl;
       if (photoRef) {
-        imageUrl = `${publicOrigin}/place-photo?ref=${encodeURIComponent(photoRef)}`;
+        imageUrl = `/place-photo?ref=${encodeURIComponent(photoRef)}`;
       } else {
         imageUrl = ensureImageUrl(null, index);
       }
@@ -2203,8 +2250,11 @@ app.post("/auth/register", asyncHandler(async (req, res) => {
   });
 
   const token = await createSession(user.id);
+  setSessionCookie(res, req, token, {
+    publicOrigin: API_PUBLIC_ORIGIN,
+    maxAgeMs: TOKEN_TTL_MS,
+  });
   return res.status(201).json({
-    token,
     user: sanitizeUser(user),
   });
 }));
@@ -2219,17 +2269,66 @@ app.post("/auth/login", asyncHandler(async (req, res) => {
   }
 
   const token = await createSession(user.id);
+  setSessionCookie(res, req, token, {
+    publicOrigin: API_PUBLIC_ORIGIN,
+    maxAgeMs: TOKEN_TTL_MS,
+  });
   return res.json({
-    token,
     user: sanitizeUser(ensureUserDataShape(user)),
   });
 }));
 
+app.post("/auth/oauth/google", async (req, res) => {
+  try {
+    const accessToken = String(req.body?.accessToken || "").trim();
+    if (!accessToken) {
+      return res.status(400).json({ error: "Google OAuth access token is required." });
+    }
+
+    const googleProfile = await fetchSupabaseUserProfile({
+      accessToken,
+      supabaseUrl: SUPABASE_URL,
+      supabasePublishableKey: SUPABASE_PUBLISHABLE_KEY,
+    });
+
+    let user = await getUserByEmail(googleProfile.email);
+    if (!user) {
+      user = await createUserRecord({
+        id: crypto.randomUUID(),
+        name: googleProfile.name,
+        email: googleProfile.email,
+        passwordHash: createUnusablePasswordHash(),
+        createdAt: new Date().toISOString(),
+      });
+    } else if (!String(user.name || "").trim() && googleProfile.name) {
+      user = await updateUserById(user.id, (current) => ({
+        ...current,
+        name: googleProfile.name,
+      }));
+    }
+
+    const token = await createSession(user.id);
+    setSessionCookie(res, req, token, {
+      publicOrigin: API_PUBLIC_ORIGIN,
+      maxAgeMs: TOKEN_TTL_MS,
+    });
+    return res.json({
+      user: sanitizeUser(ensureUserDataShape(user)),
+    });
+  } catch (error) {
+    console.error(error);
+    const status = Number.isInteger(error?.status) ? error.status : 500;
+    const message = error?.message || "Google OAuth login failed.";
+    return res.status(status).json({ error: message });
+  }
+});
+
 app.post("/auth/logout", requireAuth, asyncHandler(async (req, res) => {
   await updateUserById(req.user.id, (current) => ({
     ...current,
-    sessions: (current.sessions || []).filter((session) => session.token !== req.authToken),
+    sessions: (current.sessions || []).filter((session) => session.token !== req.authTokenHash),
   }));
+  clearSessionCookie(res, req, { publicOrigin: API_PUBLIC_ORIGIN });
   return res.json({ ok: true });
 }));
 
@@ -2609,7 +2708,6 @@ app.post("/recommend", optionalAuth, async (req, res) => {
       ? await buildRecommendationsFromPlaces(input, preferences, {
           currentLocation,
           openNowOnly,
-          publicOrigin: resolvePublicOrigin(req),
         })
       : {
           items: await buildRecommendationsGemini(finalInput),
@@ -2659,7 +2757,7 @@ app.post("/recommend", optionalAuth, async (req, res) => {
 if (HAS_FRONTEND_BUILD) {
   app.use(express.static(FRONTEND_BUILD_DIR, { index: false }));
 
-  app.get("*", (req, res, next) => {
+  app.use((req, res, next) => {
     if (req.method !== "GET") {
       return next();
     }
@@ -2698,6 +2796,6 @@ app.listen(PORT, () => {
   }
   console.log("User store: Supabase Postgres");
   console.log(
-    `Public image origin: ${API_PUBLIC_ORIGIN || `(request origin, frontend build: ${HAS_FRONTEND_BUILD ? "enabled" : "missing"})`}`,
+    `Public image origin: ${API_PUBLIC_ORIGIN || `(same-origin relative path, frontend build: ${HAS_FRONTEND_BUILD ? "enabled" : "missing"})`}`,
   );
 });

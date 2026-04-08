@@ -1,6 +1,6 @@
 import { afterEach, expect, test, vi } from "vitest";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
-import { render, screen } from "@testing-library/react";
+import { render, screen, waitFor } from "@testing-library/react";
 import App, {
   buildRecommendationRequestBody,
   buildRecommendationAssistantText,
@@ -15,14 +15,33 @@ afterEach(() => {
   vi.unstubAllGlobals();
 });
 
-test("renders TastePick brand on the home screen without auto-fetching nearby results", () => {
-  const fetchMock = vi.fn().mockResolvedValue({
-    ok: true,
-    headers: new Headers({ "content-type": "application/json" }),
-    json: async () => ({
-      items: [],
-      personalizationApplied: "",
-    }),
+test("renders TastePick brand on the home screen without auto-fetching nearby results", async () => {
+  const fetchMock = vi.fn().mockImplementation(async (input) => {
+    const url = String(input || "");
+
+    if (
+      url.includes("/auth/me") ||
+      url.includes("/user/preferences") ||
+      url.includes("/user/favorites") ||
+      url.includes("/user/history") ||
+      url.includes("/user/visits")
+    ) {
+      return {
+        ok: false,
+        status: 401,
+        headers: new Headers({ "content-type": "application/json" }),
+        json: async () => ({ error: "로그인이 필요합니다." }),
+      };
+    }
+
+    return {
+      ok: true,
+      headers: new Headers({ "content-type": "application/json" }),
+      json: async () => ({
+        items: [],
+        personalizationApplied: "",
+      }),
+    };
   });
   vi.stubGlobal("fetch", fetchMock);
 
@@ -41,7 +60,8 @@ test("renders TastePick brand on the home screen without auto-fetching nearby re
   );
   expect(screen.getAllByText(/TastePick/i).length).toBeGreaterThan(0);
   screen.getByText("내 주변 맛집 추천");
-  expect(fetchMock).not.toHaveBeenCalled();
+  await waitFor(() => expect(fetchMock).toHaveBeenCalled());
+  expect(fetchMock.mock.calls.some(([input]) => String(input || "").includes("/recommend"))).toBe(false);
 });
 
 test("does not promote IP fallback coordinates to the current location", () => {

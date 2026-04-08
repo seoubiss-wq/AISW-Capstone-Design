@@ -3,6 +3,8 @@ require("dotenv").config({ path: require("path").join(__dirname, "..", ".env") }
 const fs = require("fs");
 const path = require("path");
 const { Pool } = require("pg");
+const { buildDbSslConfig } = require("./shared/dbConfig");
+const { normalizeStoredSessionToken } = require("./shared/sessionAuth");
 
 const DATABASE_URL = (
   process.env.DATABASE_URL ||
@@ -19,12 +21,7 @@ if (!DATABASE_URL) {
 
 const pool = new Pool({
   connectionString: DATABASE_URL,
-  ssl:
-    process.env.DB_SSL === "disable" ||
-    DATABASE_URL.includes("localhost") ||
-    DATABASE_URL.includes("127.0.0.1")
-      ? false
-      : { rejectUnauthorized: false },
+  ssl: buildDbSslConfig({ connectionString: DATABASE_URL }),
   max: 3,
 });
 
@@ -167,7 +164,7 @@ function ensureUserDataShape(user) {
 
   user.sessions = user.sessions
     .map((session) => ({
-      token: String(session?.token || "").trim(),
+      token: normalizeStoredSessionToken(session?.token),
       expiresAt: Number(session?.expiresAt || 0),
     }))
     .filter((session) => session.token && Number.isFinite(session.expiresAt));
@@ -309,7 +306,7 @@ async function migrateUser(client, rawUser) {
     await client.query(
       `insert into public.user_sessions (id, user_id, token, expires_at, created_at)
        values ($1, $2, $3, $4, timezone('utc', now()))`,
-      [cryptoRandomUuid(), userId, session.token, normalizeIsoString(session.expiresAt)],
+      [cryptoRandomUuid(), userId, normalizeStoredSessionToken(session.token), normalizeIsoString(session.expiresAt)],
     );
   }
 

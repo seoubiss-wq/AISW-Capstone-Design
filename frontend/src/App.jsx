@@ -3,6 +3,13 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import "./App.css";
 import GoogleRouteMap from "./GoogleRouteMap";
 import MapDirectionsPage from "./MapDirectionsPage";
+import {
+  buildSupabaseGoogleRedirectUrl,
+  getSupabaseClient,
+  hasSupabaseAuthConfig,
+  isSupabaseGoogleSession,
+  stripSupabaseAuthParams,
+} from "./lib/supabase";
 import { sessionBootstrapQueryOptions } from "./queries/session";
 
 function resolveApiBaseUrl() {
@@ -28,7 +35,7 @@ function resolveApiBaseUrl() {
 
 const API_BASE_URL = resolveApiBaseUrl();
 
-const AUTH_STORAGE_KEY = "tastepick.auth.token";
+const AUTH_SESSION_MARKER = "session";
 const THEME_STORAGE_KEY = "tastepick.theme.mode";
 const LARGE_TEXT_STORAGE_KEY = "tastepick.accessibility.largeText";
 
@@ -318,19 +325,15 @@ const DEMO_REVIEWS = [
 
 void DEMO_REVIEWS;
 
-function readStoredToken() {
-  try {
-    return localStorage.getItem(AUTH_STORAGE_KEY) || "";
-  } catch {
-    return "";
+function resolveMediaUrl(url) {
+  if (!url) return url;
+  if (/^https?:\/\//i.test(url)) {
+    return url;
   }
-}
-
-function persistToken(token) {
-  try {
-    if (token) localStorage.setItem(AUTH_STORAGE_KEY, token);
-    else localStorage.removeItem(AUTH_STORAGE_KEY);
-  } catch {}
+  if (!API_BASE_URL) {
+    return url;
+  }
+  return `${API_BASE_URL}${url.startsWith("/") ? "" : "/"}${url}`;
 }
 
 function readStoredDarkMode() {
@@ -433,13 +436,16 @@ async function readJson(response) {
   return payload;
 }
 
-async function request(path, options = {}, authToken = "") {
+async function request(path, options = {}) {
   const headers = {
     ...(options.body ? { "Content-Type": "application/json" } : {}),
-    ...(authToken ? { Authorization: `Bearer ${authToken}` } : {}),
     ...(options.headers || {}),
   };
-  const response = await fetch(`${API_BASE_URL}${path}`, { ...options, headers });
+  const response = await fetch(`${API_BASE_URL}${path}`, {
+    ...options,
+    credentials: "include",
+    headers,
+  });
   return readJson(response);
 }
 
@@ -450,7 +456,7 @@ function enrichItem(raw, index) {
     ...fallback,
     ...raw,
     id: raw?.id || `${fallback.id}-${index}`,
-    imageUrl: raw?.imageUrl || fallback.imageUrl,
+    imageUrl: resolveMediaUrl(raw?.imageUrl || fallback.imageUrl),
     reason: raw?.reason || fallback.reason,
     address: raw?.address || "",
     category: raw?.category || fallback.category,
@@ -934,6 +940,7 @@ function AuthScreen({
   onToggleAgreement,
   onSubmit,
   onChangeMode,
+  onSocialLogin,
   message,
 }) {
   const isLogin = mode === "login";
@@ -1101,16 +1108,25 @@ function AuthScreen({
                     ["카카오 로그인", "bg-[#fee500] text-black"],
                     ["구글로 로그인", "bg-white text-on-surface border border-outline-variant/30"],
                     ["네이버 로그인", "bg-[#03c75a] text-white"],
-                  ].map(([label, className]) => (
-                    <button
-                      key={label}
-                      className={`w-full rounded-[1.25rem] px-5 py-4 text-lg font-black ${className}`}
-                      type="button"
-                      onClick={() => onChangeMode("register")}
-                    >
-                      {label}
-                    </button>
-                  ))}
+                  ].map(([label, className]) => {
+                    const provider = className.includes("#03c75a")
+                      ? "naver"
+                      : className.includes("#fee500")
+                        ? "kakao"
+                        : "google";
+
+                    return (
+                      <button
+                        key={provider}
+                        className={`w-full rounded-[1.25rem] px-5 py-4 text-lg font-black ${className}`}
+                        disabled={authLoading || booting}
+                        type="button"
+                        onClick={() => onSocialLogin(provider)}
+                      >
+                        {label}
+                      </button>
+                    );
+                  })}
                 </div>
               </>
             ) : null}
@@ -1130,8 +1146,8 @@ function AuthScreen({
 }
 
 export default function App() {
-  const [token, setToken] = useState(readStoredToken);
-  const [booting, setBooting] = useState(Boolean(readStoredToken()));
+  const [token, setToken] = useState("");
+  const [booting, setBooting] = useState(true);
   const [mode, setMode] = useState("login");
   const isMobileDevice = useMemo(() => isMobileDeviceEnvironment(), []);
   const [authForm, setAuthForm] = useState({ name: "", email: "", password: "" });
@@ -1175,6 +1191,8 @@ export default function App() {
   const locationRequestPromiseRef = useRef(null);
   const runRecommendationRef = useRef(null);
   const latestRecommendationRequestIdRef = useRef(0);
+  const oauthExchangeTokenRef = useRef("");
+  const exchangeGoogleOAuthSessionRef = useRef(null);
   const placeDetailsCacheRef = useRef({});
   const chatScrollContainerRef = useRef(null);
   const chatScrollAnchorRef = useRef(null);
@@ -1195,7 +1213,7 @@ export default function App() {
   const [chatMessages, setChatMessages] = useState([]);
   const [voiceListening, setVoiceListening] = useState(false);
   const [voiceDraft, setVoiceDraft] = useState("");
-  const sessionQuery = useQuery(sessionBootstrapQueryOptions(token));
+  const sessionQuery = useQuery(sessionBootstrapQueryOptions());
 
   useEffect(() => {
     document.body.classList.toggle("theme-dark", accessibility.darkMode);
@@ -1725,33 +1743,37 @@ export default function App() {
   }, [activeView, detailViewItem?.placeId, token]);
 
   useEffect(() => {
-    if (!token) {
+    setBooting(sessionQuery.isPending);
+  }, [sessionQuery.isPending]);
+
+  useEffect(() => {
+    if (!sessionQuery.data) {
+      return;
+    }
+
+    if (!sessionQuery.data.authenticated) {
+      clearSession();
       setBooting(false);
       return;
     }
 
-    setBooting(sessionQuery.isPending);
-  }, [token, sessionQuery.isPending]);
-
-  useEffect(() => {
-    if (!token || !sessionQuery.data) {
-      return;
-    }
-
+    setToken(AUTH_SESSION_MARKER);
     setUser(sessionQuery.data.profile.user || null);
     setFavorites(sessionQuery.data.favoritesPayload.favorites || []);
     setHistory(sessionQuery.data.historyPayload.history || []);
     setVisitHistory(sessionQuery.data.visitPayload.visits || []);
     applyPreferencePayload(sessionQuery.data.preferencePayload);
-  }, [token, sessionQuery.data]);
+  }, [sessionQuery.data]);
 
   useEffect(() => {
-    if (!token || !sessionQuery.error) {
+    if (!sessionQuery.error) {
       return;
     }
 
-    clearSession();
     setBooting(false);
+    if (token || user) {
+      clearSession();
+    }
     if (sessionQuery.error?.status === 401) {
       setMessage(buildMessage("error", "濡쒓렇???몄뀡??留뚮즺?섏뿀?듬땲?? ?ㅼ떆 濡쒓렇?명빐 二쇱꽭??"));
       return;
@@ -1764,7 +1786,49 @@ export default function App() {
           : sessionQuery.error.message,
       ),
     );
-  }, [token, sessionQuery.error]);
+  }, [sessionQuery.error, token, user]);
+
+  useEffect(() => {
+    if (sessionQuery.data?.authenticated) {
+      return;
+    }
+    if (!hasSupabaseAuthConfig) {
+      return;
+    }
+
+    let ignore = false;
+
+    const bootstrapGoogleLogin = async () => {
+      try {
+        const supabase = getSupabaseClient();
+        if (!supabase) return;
+
+        const { data, error } = await supabase.auth.getSession();
+        if (ignore || error || !isSupabaseGoogleSession(data?.session)) {
+          if (!ignore && error) {
+            setMessage(buildMessage("error", error.message));
+          }
+          return;
+        }
+
+        if (oauthExchangeTokenRef.current === data.session.access_token) {
+          return;
+        }
+
+        await exchangeGoogleOAuthSessionRef.current?.(data.session);
+      } catch (error) {
+        if (!ignore) {
+          setMessage(buildMessage("error", error.message));
+        }
+      }
+    };
+
+    bootstrapGoogleLogin();
+
+    return () => {
+      ignore = true;
+    };
+  }, [sessionQuery.data?.authenticated]);
 
   /* useEffect(() => {
     if (!token) {
@@ -1815,7 +1879,7 @@ export default function App() {
   }, [token]); */
 
   function clearSession() {
-    persistToken("");
+    oauthExchangeTokenRef.current = "";
     setToken("");
     setUser(null);
     setItems([]);
@@ -1880,6 +1944,83 @@ export default function App() {
     setAgreements((current) => ({ ...current, [key]: !current[key] }));
   }
 
+  async function exchangeGoogleOAuthSession(session) {
+    if (!session?.access_token) {
+      throw new Error("Google 로그인 세션을 확인하지 못했습니다.");
+    }
+
+    oauthExchangeTokenRef.current = session.access_token;
+    setAuthLoading(true);
+    setMessage(null);
+
+    try {
+      const response = await request("/auth/oauth/google", {
+        method: "POST",
+        body: JSON.stringify({ accessToken: session.access_token }),
+      });
+
+      const supabase = getSupabaseClient();
+      try {
+        await supabase?.auth.signOut({ scope: "local" });
+      } catch {}
+
+      if (typeof window !== "undefined") {
+        const nextUrl = stripSupabaseAuthParams(window.location.href);
+        window.history.replaceState(window.history.state, "", nextUrl);
+      }
+
+      setToken(AUTH_SESSION_MARKER);
+      await sessionQuery.refetch();
+      setUser(response.user || null);
+      setActiveView("home");
+      setMode("login");
+      setAuthForm({ name: "", email: "", password: "" });
+      setMessage(buildMessage("ok", "Google 계정으로 로그인했습니다."));
+    } catch (error) {
+      oauthExchangeTokenRef.current = "";
+      throw error;
+    } finally {
+      setAuthLoading(false);
+    }
+  }
+  exchangeGoogleOAuthSessionRef.current = exchangeGoogleOAuthSession;
+
+  async function handleSocialLogin(provider) {
+    if (provider !== "google") {
+      setMessage(buildMessage("neutral", "해당 소셜 로그인은 아직 준비 중입니다."));
+      return;
+    }
+
+    if (!hasSupabaseAuthConfig) {
+      setMessage(buildMessage("error", "Supabase Google 로그인 설정이 아직 연결되지 않았습니다."));
+      return;
+    }
+
+    setAuthLoading(true);
+    setMessage(null);
+
+    try {
+      const supabase = getSupabaseClient();
+      const { data, error } = await supabase.auth.signInWithOAuth({
+        provider: "google",
+        options: {
+          redirectTo: buildSupabaseGoogleRedirectUrl(),
+        },
+      });
+
+      if (error) {
+        throw error;
+      }
+
+      if (!data?.url) {
+        throw new Error("Google 로그인 화면을 열지 못했습니다.");
+      }
+    } catch (error) {
+      handleRequestError(error);
+      setAuthLoading(false);
+    }
+  }
+
   async function handleAuthSubmit(event) {
     event.preventDefault();
     setAuthLoading(true);
@@ -1901,8 +2042,8 @@ export default function App() {
         body: JSON.stringify(payload),
       });
 
-      persistToken(response.token);
-      setToken(response.token);
+      setToken(AUTH_SESSION_MARKER);
+      await sessionQuery.refetch();
       setUser(response.user || null);
       setActiveView("home");
       setMode("login");
@@ -2508,6 +2649,7 @@ export default function App() {
         mode={mode}
         onChangeForm={handleFormChange}
         onChangeMode={setMode}
+        onSocialLogin={handleSocialLogin}
         onSubmit={handleAuthSubmit}
         onToggleAgreement={handleToggleAgreement}
       />

@@ -21,6 +21,17 @@ function resolveApiBaseUrl() {
 
 const API_BASE_URL = resolveApiBaseUrl();
 
+export function resolveApiUrl(path) {
+  if (!path) return path;
+  if (/^https?:\/\//i.test(path)) {
+    return path;
+  }
+  if (!API_BASE_URL) {
+    return path;
+  }
+  return `${API_BASE_URL}${path.startsWith("/") ? "" : "/"}${path}`;
+}
+
 export async function readJson(response) {
   const contentType = response.headers.get("content-type") || "";
   const payload = contentType.includes("application/json") ? await response.json() : {};
@@ -34,13 +45,16 @@ export async function readJson(response) {
   return payload;
 }
 
-export async function request(path, options = {}, authToken = "") {
+export async function request(path, options = {}) {
   const headers = {
     ...(options.body ? { "Content-Type": "application/json" } : {}),
-    ...(authToken ? { Authorization: `Bearer ${authToken}` } : {}),
     ...(options.headers || {}),
   };
 
-  const response = await fetch(`${API_BASE_URL}${path}`, { ...options, headers });
+  const response = await fetch(resolveApiUrl(path), {
+    ...options,
+    credentials: "include",
+    headers,
+  });
   return readJson(response);
 }
