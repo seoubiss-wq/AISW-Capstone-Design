@@ -2360,7 +2360,7 @@ app.post("/auth/register", asyncHandler(async (req, res) => {
 
   const existingUser = await getUserByEmail(email);
   if (existingUser) {
-    return res.status(409).json({ error: "이미 가입된 이메일입니다." });
+    return res.status(409).json({ error: "이미 가입한 이메일입니다." });
   }
 
   const user = await createUserRecord({
@@ -2389,7 +2389,7 @@ app.post("/auth/login", asyncHandler(async (req, res) => {
 
   if (user && !hasAuthProvider(user, LOCAL_AUTH_PROVIDER)) {
     return res.status(403).json({
-      error: "Google 계정으로 가입된 이메일입니다. Google로 로그인해 주세요.",
+      error: "Google 계정으로 가입한 이메일입니다. Google로 로그인해 주세요.",
       code: "LOCAL_PASSWORD_LOGIN_UNAVAILABLE",
     });
   }
@@ -2439,15 +2439,19 @@ app.post("/auth/oauth/google", async (req, res) => {
         passwordHash: createUnusablePasswordHash(),
         createdAt: new Date().toISOString(),
       });
-    } else if (!canAutoLinkGoogleAccount(user)) {
-      return res.status(409).json({
-        error: "이미 이메일/비밀번호로 가입된 계정입니다. 기존 로그인 방식을 사용해 주세요.",
-      });
-    } else if (!String(user.name || "").trim() && googleProfile.name) {
-      user = await updateUserById(user.id, (current) => ({
-        ...current,
-        name: googleProfile.name,
-      }));
+    } else {
+      const nextName = String(user.name || "").trim() || googleProfile.name || user.name;
+      const nextAuthProvider = hasAuthProvider(user, GOOGLE_AUTH_PROVIDER)
+        ? user.authProvider
+        : mergeAuthProvider(user.authProvider, GOOGLE_AUTH_PROVIDER);
+
+      if (nextName !== user.name || nextAuthProvider !== user.authProvider) {
+        user = await updateUserById(user.id, (current) => ({
+          ...current,
+          authProvider: nextAuthProvider,
+          name: nextName,
+        }));
+      }
     }
 
     const token = await createSession(user.id);
@@ -2488,7 +2492,7 @@ app.post("/auth/oauth/google/merge", async (req, res) => {
     let user = await getUserByEmail(googleProfile.email);
     if (!user) {
       return res.status(404).json({
-        error: "기존 계정을 찾지 못했습니다. 먼저 이메일/비밀번호로 가입해 주세요.",
+        error: "기존 계정을 찾지 못했습니다. 먼저 이메일과 비밀번호로 가입해 주세요.",
       });
     }
 
