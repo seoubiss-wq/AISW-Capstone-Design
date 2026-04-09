@@ -1,9 +1,11 @@
-import { expect, test } from "vitest";
+import { expect, test, vi } from "vitest";
 import {
   buildSupabaseStoragePrefix,
   clearSupabaseAuthStorage,
   getSupabaseAuthConfig,
   getSupabaseBridgeStorage,
+  hasSupabaseAuthConfig,
+  hydrateSupabaseAuthConfig,
 } from "./supabase";
 
 function createMockStorage(initialEntries) {
@@ -53,4 +55,24 @@ test("getSupabaseAuthConfig uses DEV scoped env values in local builds", () => {
     url: expect.any(String),
     publishableKey: expect.any(String),
   });
+});
+
+test("hydrateSupabaseAuthConfig adopts the backend auth configuration", async () => {
+  const fetchMock = vi.fn().mockResolvedValue({
+    ok: true,
+    json: async () => ({
+      supabaseUrl: "https://prod-project-ref.supabase.co",
+      supabasePublishableKey: "prod-publishable-key",
+    }),
+  });
+
+  const config = await hydrateSupabaseAuthConfig(fetchMock);
+
+  expect(fetchMock).toHaveBeenCalledTimes(1);
+  expect(config).toEqual({
+    url: "https://prod-project-ref.supabase.co",
+    publishableKey: "prod-publishable-key",
+  });
+  expect(getSupabaseAuthConfig()).toEqual(config);
+  expect(hasSupabaseAuthConfig()).toBe(true);
 });

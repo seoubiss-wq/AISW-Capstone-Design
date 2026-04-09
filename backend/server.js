@@ -27,7 +27,9 @@ const {
   setSessionCookie,
 } = require("./scripts/shared/sessionAuth");
 const {
+  buildSupabaseAuthConfig,
   fetchSupabaseUserProfile,
+  resolveSupabaseAuthConfigForAccessToken,
 } = require("./scripts/shared/supabaseAuth");
 const {
   canAutoLinkGoogleAccount,
@@ -61,6 +63,10 @@ const GOOGLE_MAPS_API_KEY = process.env.GOOGLE_MAPS_API_KEY?.trim();
 const DATABASE_URL = readScopedEnv("DATABASE_URL");
 const SUPABASE_URL = readScopedEnv("SUPABASE_URL");
 const SUPABASE_PUBLISHABLE_KEY = readScopedEnv("SUPABASE_PUBLISHABLE_KEY");
+const DEV_SUPABASE_URL = String(process.env.DEV_SUPABASE_URL || "").trim();
+const DEV_SUPABASE_PUBLISHABLE_KEY = String(process.env.DEV_SUPABASE_PUBLISHABLE_KEY || "").trim();
+const PROD_SUPABASE_URL = String(process.env.PROD_SUPABASE_URL || "").trim();
+const PROD_SUPABASE_PUBLISHABLE_KEY = String(process.env.PROD_SUPABASE_PUBLISHABLE_KEY || "").trim();
 const API_PUBLIC_ORIGIN = String(process.env.API_PUBLIC_ORIGIN || "").replace(/\/$/, "");
 const PORT = Number(process.env.PORT || 5500);
 const FRONTEND_BUILD_DIR = path.join(__dirname, "..", "frontend", "build");
@@ -75,6 +81,47 @@ const ALLOWED_CORS_ORIGINS = buildAllowedCorsOrigins({
   apiPublicOrigin: API_PUBLIC_ORIGIN,
   extraOrigins: process.env.CORS_ALLOWED_ORIGINS,
 });
+
+const SUPABASE_AUTH_CONFIGS = [
+  buildSupabaseAuthConfig({
+    label: IS_PRODUCTION ? "runtime-prod" : "runtime-dev",
+    supabaseUrl: SUPABASE_URL,
+    supabasePublishableKey: SUPABASE_PUBLISHABLE_KEY,
+  }),
+  buildSupabaseAuthConfig({
+    label: "dev",
+    supabaseUrl: DEV_SUPABASE_URL,
+    supabasePublishableKey: DEV_SUPABASE_PUBLISHABLE_KEY,
+  }),
+  buildSupabaseAuthConfig({
+    label: "prod",
+    supabaseUrl: PROD_SUPABASE_URL,
+    supabasePublishableKey: PROD_SUPABASE_PUBLISHABLE_KEY,
+  }),
+].filter((config, index, configs) => {
+  if (!config.supabaseUrl || !config.supabasePublishableKey) {
+    return false;
+  }
+
+  return configs.findIndex(
+    (candidate) =>
+      candidate.supabaseUrl === config.supabaseUrl &&
+      candidate.supabasePublishableKey === config.supabasePublishableKey,
+  ) === index;
+});
+
+function resolveSupabaseAuthConfig(accessToken) {
+  const authConfig = resolveSupabaseAuthConfigForAccessToken(accessToken, SUPABASE_AUTH_CONFIGS);
+  if (authConfig) {
+    return authConfig;
+  }
+
+  return {
+    label: IS_PRODUCTION ? "runtime-prod" : "runtime-dev",
+    supabaseUrl: SUPABASE_URL,
+    supabasePublishableKey: SUPABASE_PUBLISHABLE_KEY,
+  };
+}
 
 app.use(cors({
   credentials: true,
@@ -981,11 +1028,11 @@ function getAI() {
 function describeEmptyResponse(response) {
   const block = response.promptFeedback?.blockReason;
   if (block) {
-    return `?붿껌??李⑤떒?섏뿀?듬땲?? (${block})`;
+    return `요청이 차단되었습니다. (${block})`;
   }
   const c0 = response.candidates?.[0];
   if (c0?.finishReason && c0.finishReason !== "STOP") {
-    return `?묐떟???뺤긽 醫낅즺?섏? ?딆븯?듬땲?? (finishReason: ${c0.finishReason})`;
+    return `응답이 정상 종료되지 않았습니다. (finishReason: ${c0.finishReason})`;
   }
   return "";
 }
@@ -1750,7 +1797,7 @@ function scorePlaceForPreferences(place, preferences, context = {}) {
   const avoidMatches = avoidTokens.filter((token) => searchableText.includes(token)).length;
   if (avoidMatches > 0) {
     score -= avoidMatches * 12;
-    signals.push("湲고뵾 ?щ즺 二쇱쓽");
+    signals.push("기피 재료 주의");
   }
 
   if (typeof place.rating === "number") {
@@ -2208,15 +2255,15 @@ async function buildRecommendationsFromPlaces(
 }
 
 async function generateRecommendationRaw(input) {
-  const contents = `??븷: ?쒓뎅???덈뒗 留쏆쭛??異붿쿇?섎뒗 ?꾩슦誘몄엯?덈떎.
+  const contents = `역할: 사용자의 조건에 맞는 맛집을 추천하는 도우미입니다.
 
-洹쒖튃:
-- ?ㅼ젣 議댁옱?섎뒗 媛寃??대쫫 ?꾩＜濡?異붿쿇?섏꽭??
-- 議곌굔??紐⑦샇?섎㈃ ?덉쟾??踰붿슜 異붿쿇???섏꽭??
-- reason? 吏㏐퀬 ?먯뿰?ㅻ윭???쒓뎅?대줈 ?묒꽦?섏꽭??
-- 異쒕젰? JSON留?諛섑솚?섏꽭??
+규칙:
+- 실제 존재하는 가게 이름 위주로 추천하세요.
+- 조건이 모호하면 안전한 범용 추천을 하세요.
+- reason은 짧고 자연스러운 한국어로 작성하세요.
+- 출력은 JSON만 반환하세요.
 
-議곌굔: ${input}`;
+조건: ${input}`;
 
   const client = getAI();
   const jsonConfig = {
@@ -2264,12 +2311,12 @@ async function buildRecommendationsGemini(input) {
 
   if (!items?.length) {
     const detail = describeEmptyResponse(response);
-    throw new Error(detail || "異붿쿇 寃곌낵瑜?留뚮뱾吏 紐삵뻽?듬땲??");
+    throw new Error(detail || "추천 결과를 만들지 못했습니다.");
   }
 
   return Promise.all(
     items.map(async (row, index) => {
-      const name = String(row.name || "").trim() || `異붿쿇 ${index + 1}`;
+      const name = String(row.name || "").trim() || `추천 ${index + 1}`;
       const websiteUrl = normalizeHttpUrl(row.websiteUrl);
       const maps = buildPlaceLinks(name, {
         address: row.address,
@@ -2361,6 +2408,13 @@ app.post("/auth/login", asyncHandler(async (req, res) => {
   });
 }));
 
+app.get("/auth/config", (req, res) => {
+  return res.json({
+    supabaseUrl: SUPABASE_URL,
+    supabasePublishableKey: SUPABASE_PUBLISHABLE_KEY,
+  });
+});
+
 app.post("/auth/oauth/google", async (req, res) => {
   try {
     const accessToken = String(req.body?.accessToken || "").trim();
@@ -2368,10 +2422,11 @@ app.post("/auth/oauth/google", async (req, res) => {
       return res.status(400).json({ error: "Google OAuth access token is required." });
     }
 
+    const supabaseAuthConfig = resolveSupabaseAuthConfig(accessToken);
     const googleProfile = await fetchSupabaseUserProfile({
       accessToken,
-      supabaseUrl: SUPABASE_URL,
-      supabasePublishableKey: SUPABASE_PUBLISHABLE_KEY,
+      supabaseUrl: supabaseAuthConfig.supabaseUrl,
+      supabasePublishableKey: supabaseAuthConfig.supabasePublishableKey,
     });
 
     let user = await getUserByEmail(googleProfile.email);
@@ -2423,10 +2478,11 @@ app.post("/auth/oauth/google/merge", async (req, res) => {
       return res.status(400).json({ error: "기존 비밀번호를 입력해 주세요." });
     }
 
+    const supabaseAuthConfig = resolveSupabaseAuthConfig(accessToken);
     const googleProfile = await fetchSupabaseUserProfile({
       accessToken,
-      supabaseUrl: SUPABASE_URL,
-      supabasePublishableKey: SUPABASE_PUBLISHABLE_KEY,
+      supabaseUrl: supabaseAuthConfig.supabaseUrl,
+      supabasePublishableKey: supabaseAuthConfig.supabasePublishableKey,
     });
 
     let user = await getUserByEmail(googleProfile.email);
@@ -2555,7 +2611,7 @@ app.post("/user/preferences/sheets", requireAuth, asyncHandler(async (req, res) 
   try {
     const user = await updateUserById(req.user.id, (current) => {
       if (current.preferenceSheets.length >= MAX_PREFERENCE_SHEETS) {
-        throw new Error(`媛쒖씤???ㅼ젙 ?쒗듃??理쒕? ${MAX_PREFERENCE_SHEETS}媛쒓퉴吏 ??ν븷 ???덉뒿?덈떎.`);
+        throw new Error(`개인화 설정 시트는 최대 ${MAX_PREFERENCE_SHEETS}개까지 추가할 수 있습니다.`);
       }
       return {
         ...current,
@@ -2571,7 +2627,7 @@ app.post("/user/preferences/sheets", requireAuth, asyncHandler(async (req, res) 
       user: sanitizeUser(user),
     });
   } catch (error) {
-    return res.status(400).json({ error: error.message || "媛쒖씤???ㅼ젙 ?쒗듃 ?앹꽦???ㅽ뙣?덉뒿?덈떎." });
+    return res.status(400).json({ error: error.message || "개인화 설정 시트 생성에 실패했습니다." });
   }
 }));
 
@@ -2600,7 +2656,7 @@ app.delete("/user/preferences/:sheetId", requireAuth, asyncHandler(async (req, r
   try {
     const user = await updateUserById(req.user.id, (current) => {
       if (current.preferenceSheets.length <= 1) {
-        throw new Error("留덉?留?媛쒖씤???ㅼ젙 ?쒗듃????젣?????놁뒿?덈떎.");
+        throw new Error("마지막 개인화 설정 시트는 삭제할 수 없습니다.");
       }
       const remaining = current.preferenceSheets.filter((sheet) => sheet.id !== sheetId);
       return {
@@ -2620,7 +2676,7 @@ app.delete("/user/preferences/:sheetId", requireAuth, asyncHandler(async (req, r
       user: sanitizeUser(user),
     });
   } catch (error) {
-    return res.status(400).json({ error: error.message || "媛쒖씤???ㅼ젙 ?쒗듃 ??젣???ㅽ뙣?덉뒿?덈떎." });
+    return res.status(400).json({ error: error.message || "개인화 설정 시트 삭제에 실패했습니다." });
   }
 }));
 
@@ -2742,7 +2798,7 @@ app.get("/place-details/:placeId", asyncHandler(async (req, res) => {
 app.post("/user/favorites", requireAuth, asyncHandler(async (req, res) => {
   const favorite = sanitizeFavorite(req.body);
   if (!favorite) {
-    return res.status(400).json({ error: "利먭꺼李얘린 ??ぉ???щ컮瑜댁? ?딆뒿?덈떎." });
+    return res.status(400).json({ error: "즐겨찾기 항목이 올바르지 않습니다." });
   }
 
   const user = await updateUserById(req.user.id, (current) => {
@@ -2806,7 +2862,7 @@ app.post("/recommend", optionalAuth, async (req, res) => {
   if (!input) {
     return res.status(400).json({
       items: null,
-      error: "異붿쿇 議곌굔???낅젰?댁＜?몄슂.",
+      error: "추천 조건을 입력해 주세요.",
     });
   }
 
@@ -2814,7 +2870,7 @@ app.post("/recommend", optionalAuth, async (req, res) => {
     return res.status(500).json({
       items: null,
       error:
-        "backend/.env ??GOOGLE_MAPS_API_KEY ?먮뒗 GEMINI_API_KEY 瑜??ㅼ젙?댁＜?몄슂.",
+        "backend/.env 에 GOOGLE_MAPS_API_KEY 또는 GEMINI_API_KEY를 설정해 주세요.",
     });
   }
 
@@ -2827,7 +2883,7 @@ app.post("/recommend", optionalAuth, async (req, res) => {
     .filter(Boolean)
     .join(", ");
   const finalInput = personalizationText
-    ? `${input}. 媛쒖씤??議곌굔: ${personalizationText}`
+    ? `${input}. 개인화 조건: ${personalizationText}`
     : input;
 
   const locationKey = currentLocation

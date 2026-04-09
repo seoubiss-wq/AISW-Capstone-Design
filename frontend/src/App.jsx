@@ -8,6 +8,7 @@ import {
   clearSupabaseBridgeSession,
   getSupabaseClient,
   hasSupabaseAuthConfig,
+  hydrateSupabaseAuthConfig,
   isSupabaseGoogleSession,
   stripSupabaseAuthParams,
 } from "./lib/supabase";
@@ -1851,14 +1852,14 @@ export default function App() {
       clearSession();
     }
     if (sessionQuery.error?.status === 401) {
-      setMessage(buildMessage("error", "濡쒓렇???몄뀡??留뚮즺?섏뿀?듬땲?? ?ㅼ떆 濡쒓렇?명빐 二쇱꽭??"));
+      setMessage(buildMessage("error", "로그인 세션이 만료되었습니다. 다시 로그인해 주세요."));
       return;
     }
     setMessage(
       buildMessage(
         "error",
         sessionQuery.error?.status === 401
-          ? "濡쒓렇???몄뀡??留뚮즺?섏뿀?듬땲?? ?ㅼ떆 濡쒓렇?명빐 二쇱꽭??"
+          ? "로그인 세션이 만료되었습니다. 다시 로그인해 주세요."
           : sessionQuery.error.message,
       ),
     );
@@ -1868,14 +1869,15 @@ export default function App() {
     if (sessionQuery.data?.authenticated) {
       return;
     }
-    if (!hasSupabaseAuthConfig) {
-      return;
-    }
-
     let ignore = false;
 
     const bootstrapGoogleLogin = async () => {
       try {
+        await hydrateSupabaseAuthConfig();
+        if (ignore || !hasSupabaseAuthConfig()) {
+          return;
+        }
+
         const supabase = getSupabaseClient();
         if (!supabase) return;
 
@@ -2098,7 +2100,8 @@ export default function App() {
       return;
     }
 
-    if (!hasSupabaseAuthConfig) {
+    await hydrateSupabaseAuthConfig();
+    if (!hasSupabaseAuthConfig()) {
       setMessage(buildMessage("error", "Supabase Google 로그인 설정이 아직 연결되지 않았습니다."));
       return;
     }

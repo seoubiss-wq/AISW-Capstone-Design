@@ -1,11 +1,14 @@
 import { createClient } from "@supabase/supabase-js";
+import { resolveApiUrl } from "./api";
 
-const SUPABASE_URL = String(__SUPABASE_URL__ || "").trim().replace(/\/$/, "");
-const SUPABASE_PUBLISHABLE_KEY = String(__SUPABASE_PUBLISHABLE_KEY__ || "").trim();
-
-export const hasSupabaseAuthConfig = Boolean(SUPABASE_URL && SUPABASE_PUBLISHABLE_KEY);
+const DEFAULT_SUPABASE_CONFIG = {
+  url: String(__SUPABASE_URL__ || "").trim().replace(/\/$/, ""),
+  publishableKey: String(__SUPABASE_PUBLISHABLE_KEY__ || "").trim(),
+};
 
 let supabaseClient = null;
+let supabaseAuthConfig = { ...DEFAULT_SUPABASE_CONFIG };
+let supabaseAuthConfigHydrationPromise = null;
 
 function createMemoryStorage() {
   const map = new Map();
@@ -88,11 +91,60 @@ export function getSupabaseBridgeStorage() {
   return createMemoryStorage();
 }
 
+function normalizeSupabaseAuthConfig(config) {
+  return {
+    url: String(config?.url || config?.supabaseUrl || "").trim().replace(/\/$/, ""),
+    publishableKey: String(
+      config?.publishableKey || config?.supabasePublishableKey || "",
+    ).trim(),
+  };
+}
+
+function applySupabaseAuthConfig(nextConfig) {
+  const normalizedNextConfig = normalizeSupabaseAuthConfig(nextConfig);
+  const prevConfigKey = `${supabaseAuthConfig.url}|${supabaseAuthConfig.publishableKey}`;
+  const nextConfigKey = `${normalizedNextConfig.url}|${normalizedNextConfig.publishableKey}`;
+
+  supabaseAuthConfig = normalizedNextConfig;
+  if (prevConfigKey !== nextConfigKey) {
+    supabaseClient = null;
+  }
+}
+
+export function hasSupabaseAuthConfig() {
+  return Boolean(supabaseAuthConfig.url && supabaseAuthConfig.publishableKey);
+}
+
+export async function hydrateSupabaseAuthConfig(fetchImpl = fetch) {
+  if (!supabaseAuthConfigHydrationPromise) {
+    supabaseAuthConfigHydrationPromise = (async () => {
+      try {
+        const response = await fetchImpl(resolveApiUrl("/auth/config"), {
+          credentials: "include",
+        });
+
+        if (response.ok) {
+          const payload = await response.json();
+          const nextConfig = normalizeSupabaseAuthConfig(payload);
+          if (nextConfig.url && nextConfig.publishableKey) {
+            applySupabaseAuthConfig(nextConfig);
+            return getSupabaseAuthConfig();
+          }
+        }
+      } catch {}
+
+      return getSupabaseAuthConfig();
+    })();
+  }
+
+  return supabaseAuthConfigHydrationPromise;
+}
+
 export function getSupabaseClient() {
-  if (!hasSupabaseAuthConfig) return null;
+  if (!hasSupabaseAuthConfig()) return null;
 
   if (!supabaseClient) {
-    supabaseClient = createClient(SUPABASE_URL, SUPABASE_PUBLISHABLE_KEY, {
+    supabaseClient = createClient(supabaseAuthConfig.url, supabaseAuthConfig.publishableKey, {
       auth: {
         autoRefreshToken: false,
         detectSessionInUrl: true,
@@ -107,10 +159,7 @@ export function getSupabaseClient() {
 }
 
 export function getSupabaseAuthConfig() {
-  return {
-    url: SUPABASE_URL,
-    publishableKey: SUPABASE_PUBLISHABLE_KEY,
-  };
+  return { ...supabaseAuthConfig };
 }
 
 export function buildSupabaseGoogleRedirectUrl(locationLike = window.location) {

@@ -6,6 +6,79 @@ function normalizeSupabaseUrl(rawUrl) {
   return String(rawUrl || "").trim().replace(/\/$/, "");
 }
 
+function normalizeSupabaseProjectRef(rawValue) {
+  return String(rawValue || "").trim().toLowerCase();
+}
+
+function readJsonWebTokenPayload(accessToken) {
+  const normalizedAccessToken = String(accessToken || "").trim();
+  const segments = normalizedAccessToken.split(".");
+  if (segments.length < 2) {
+    return null;
+  }
+
+  try {
+    const payload = segments[1]
+      .replace(/-/g, "+")
+      .replace(/_/g, "/");
+    const paddedPayload = payload.padEnd(payload.length + ((4 - (payload.length % 4)) % 4), "=");
+    return JSON.parse(Buffer.from(paddedPayload, "base64").toString("utf8"));
+  } catch {
+    return null;
+  }
+}
+
+function getSupabaseProjectRefFromUrl(supabaseUrl) {
+  try {
+    const hostname = new URL(normalizeSupabaseUrl(supabaseUrl)).hostname;
+    return normalizeSupabaseProjectRef(hostname.split(".")[0]);
+  } catch {
+    return "";
+  }
+}
+
+function getSupabaseProjectRefFromAccessToken(accessToken) {
+  const payload = readJsonWebTokenPayload(accessToken);
+  const issuer = String(payload?.iss || "").trim();
+  if (!issuer) {
+    return "";
+  }
+
+  return getSupabaseProjectRefFromUrl(issuer);
+}
+
+function buildSupabaseAuthConfig({ label, supabaseUrl, supabasePublishableKey }) {
+  const normalizedSupabaseUrl = normalizeSupabaseUrl(supabaseUrl);
+  const normalizedSupabasePublishableKey = String(supabasePublishableKey || "").trim();
+
+  return {
+    label: String(label || "").trim(),
+    projectRef: getSupabaseProjectRefFromUrl(normalizedSupabaseUrl),
+    supabaseUrl: normalizedSupabaseUrl,
+    supabasePublishableKey: normalizedSupabasePublishableKey,
+  };
+}
+
+function resolveSupabaseAuthConfigForAccessToken(accessToken, configs) {
+  const normalizedConfigs = Array.isArray(configs)
+    ? configs.filter((config) => config?.supabaseUrl && config?.supabasePublishableKey)
+    : [];
+
+  if (normalizedConfigs.length === 0) {
+    return null;
+  }
+
+  const projectRefFromToken = getSupabaseProjectRefFromAccessToken(accessToken);
+  if (projectRefFromToken) {
+    const exactMatch = normalizedConfigs.find((config) => config.projectRef === projectRefFromToken);
+    if (exactMatch) {
+      return exactMatch;
+    }
+  }
+
+  return normalizedConfigs[0];
+}
+
 function hasGoogleProvider(userPayload) {
   const provider = String(userPayload?.app_metadata?.provider || "").trim().toLowerCase();
   if (provider === "google") return true;
@@ -115,8 +188,12 @@ async function fetchSupabaseUserProfile({
 }
 
 module.exports = {
+  buildSupabaseAuthConfig,
   fetchSupabaseUserProfile,
+  getSupabaseProjectRefFromAccessToken,
+  getSupabaseProjectRefFromUrl,
   hasGoogleProvider,
   normalizeSupabaseUrl,
   pickSupabaseDisplayName,
+  resolveSupabaseAuthConfigForAccessToken,
 };
