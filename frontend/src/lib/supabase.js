@@ -128,27 +128,34 @@ export async function hydrateSupabaseAuthConfig(fetchImpl = fetch) {
           credentials: "include",
         });
 
-        if (response.ok) {
-          const payload = await response.json();
-          const nextConfig = normalizeSupabaseAuthConfig(payload);
-          if (nextConfig.url && nextConfig.publishableKey) {
-            applySupabaseAuthConfig(nextConfig);
-            return getSupabaseAuthConfig();
-          }
+        if (!response.ok) {
+          throw new Error("Supabase auth config request failed.");
         }
-      } catch {}
 
-      const currentConfig = getSupabaseAuthConfig();
-      if (!currentConfig.url || !currentConfig.publishableKey) {
-        supabaseAuthConfigHydrationPromise = null;
+        const payload = await response.json();
+        const nextConfig = normalizeSupabaseAuthConfig(payload);
+        if (!nextConfig.url || !nextConfig.publishableKey) {
+          throw new Error("Supabase auth config response was incomplete.");
+        }
+
+        applySupabaseAuthConfig(nextConfig);
+        return {
+          config: getSupabaseAuthConfig(),
+          fromBackend: true,
+        };
+      } catch {
+        return {
+          config: getSupabaseAuthConfig(),
+          fromBackend: false,
+        };
       }
-
-      return currentConfig;
     })();
   }
 
-  const hydratedConfig = await supabaseAuthConfigHydrationPromise;
-  if (!hydratedConfig.url || !hydratedConfig.publishableKey) {
+  const hydrationResult = await supabaseAuthConfigHydrationPromise;
+  const hydratedConfig = hydrationResult?.config || getSupabaseAuthConfig();
+
+  if (!hydrationResult?.fromBackend) {
     supabaseAuthConfigHydrationPromise = null;
   }
 

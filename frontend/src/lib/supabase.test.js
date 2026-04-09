@@ -67,22 +67,24 @@ test("hydrateSupabaseAuthConfig adopts the backend auth configuration", async ()
   });
 
   const config = await hydrateSupabaseAuthConfig(fetchMock);
+  const cachedConfig = await hydrateSupabaseAuthConfig(fetchMock);
 
   expect(fetchMock).toHaveBeenCalledTimes(1);
   expect(config).toEqual({
     url: "https://prod-project-ref.supabase.co",
     publishableKey: "prod-publishable-key",
   });
+  expect(cachedConfig).toEqual(config);
   expect(getSupabaseAuthConfig()).toEqual(config);
   expect(hasSupabaseAuthConfig()).toBe(true);
 });
 
-test("hydrateSupabaseAuthConfig retries after an empty config response", async () => {
+test("hydrateSupabaseAuthConfig retries after an incomplete backend config response", async () => {
   vi.resetModules();
   const fetchMock = vi
     .fn()
     .mockResolvedValueOnce({
-      ok: false,
+      ok: true,
       json: async () => ({}),
     })
     .mockResolvedValueOnce({
