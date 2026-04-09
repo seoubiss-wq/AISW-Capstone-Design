@@ -5,7 +5,7 @@ const fs = require("node:fs");
 const os = require("node:os");
 const path = require("node:path");
 
-test("server.js exits with a clear error when DATABASE_URL is missing", () => {
+test("server.js exits with a clear error when no scoped database url is configured", () => {
   const tempDir = fs.mkdtempSync(path.join(os.tmpdir(), "tastepick-backend-test-"));
   const serverPath = path.join(__dirname, "..", "server.js");
 
@@ -15,9 +15,8 @@ test("server.js exits with a clear error when DATABASE_URL is missing", () => {
       encoding: "utf8",
       env: {
         ...process.env,
-        DATABASE_URL: "",
-        SUPABASE_DB_URL: "",
-        SUPABASE_DATABASE_URL: "",
+        DEV_DATABASE_URL: "",
+        PROD_DATABASE_URL: "",
       },
       timeout: 10000,
     });
@@ -25,7 +24,7 @@ test("server.js exits with a clear error when DATABASE_URL is missing", () => {
     const combinedOutput = `${result.stdout}\n${result.stderr}`;
 
     assert.notStrictEqual(result.status, 0);
-    assert.match(combinedOutput, /DATABASE_URL 또는 SUPABASE_DB_URL이 필요합니다/);
+    assert.match(combinedOutput, /DEV_DATABASE_URL 또는 PROD_DATABASE_URL이 필요합니다/);
   } finally {
     fs.rmSync(tempDir, { recursive: true, force: true });
   }
@@ -41,9 +40,8 @@ test("server.js starts successfully with the frontend catch-all enabled", async 
       env: {
         ...process.env,
         PORT: String(port),
-        DATABASE_URL: "postgres://localhost:5432/tastepick_test",
-        SUPABASE_DB_URL: "",
-        SUPABASE_DATABASE_URL: "",
+        DEV_DATABASE_URL: "postgres://localhost:5432/tastepick_test",
+        PROD_DATABASE_URL: "",
       },
       stdio: ["ignore", "pipe", "pipe"],
     });

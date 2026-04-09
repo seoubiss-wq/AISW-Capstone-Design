@@ -45,18 +45,22 @@ const {
 const app = express();
 app.set("trust proxy", true);
 
+const IS_PRODUCTION = process.env.NODE_ENV === "production";
+
+function readScopedEnv(baseName) {
+  const scopedValue = IS_PRODUCTION
+    ? process.env[`PROD_${baseName}`]
+    : process.env[`DEV_${baseName}`];
+  return String(scopedValue || "").trim();
+}
+
 const API_KEY = process.env.GEMINI_API_KEY;
 const MODEL = process.env.GEMINI_MODEL || "gemini-3-flash-preview";
 const UNSPLASH_ACCESS_KEY = process.env.UNSPLASH_ACCESS_KEY?.trim();
 const GOOGLE_MAPS_API_KEY = process.env.GOOGLE_MAPS_API_KEY?.trim();
-const DATABASE_URL = (
-  process.env.DATABASE_URL ||
-  process.env.SUPABASE_DB_URL ||
-  process.env.SUPABASE_DATABASE_URL ||
-  ""
-).trim();
-const SUPABASE_URL = String(process.env.SUPABASE_URL || "").trim();
-const SUPABASE_PUBLISHABLE_KEY = String(process.env.SUPABASE_PUBLISHABLE_KEY || "").trim();
+const DATABASE_URL = readScopedEnv("DATABASE_URL");
+const SUPABASE_URL = readScopedEnv("SUPABASE_URL");
+const SUPABASE_PUBLISHABLE_KEY = readScopedEnv("SUPABASE_PUBLISHABLE_KEY");
 const API_PUBLIC_ORIGIN = String(process.env.API_PUBLIC_ORIGIN || "").replace(/\/$/, "");
 const PORT = Number(process.env.PORT || 5500);
 const FRONTEND_BUILD_DIR = path.join(__dirname, "..", "frontend", "build");
@@ -64,7 +68,7 @@ const FRONTEND_INDEX_FILE = path.join(FRONTEND_BUILD_DIR, "index.html");
 const HAS_FRONTEND_BUILD = fs.existsSync(FRONTEND_INDEX_FILE);
 
 if (!DATABASE_URL) {
-  throw new Error("DATABASE_URL 또는 SUPABASE_DB_URL이 필요합니다.");
+  throw new Error("DEV_DATABASE_URL 또는 PROD_DATABASE_URL이 필요합니다.");
 }
 
 const ALLOWED_CORS_ORIGINS = buildAllowedCorsOrigins({
@@ -386,7 +390,7 @@ function mapUserGraphFromDb(
 
 async function withDbClient(run) {
   if (!dbPool) {
-    throw new Error("DATABASE_URL 또는 SUPABASE_DB_URL이 설정되지 않았습니다.");
+    throw new Error("DEV_DATABASE_URL 또는 PROD_DATABASE_URL이 설정되지 않았습니다.");
   }
   const client = await dbPool.connect();
   try {
@@ -2476,6 +2480,17 @@ app.post("/auth/logout", requireAuth, asyncHandler(async (req, res) => {
   clearSessionCookie(res, req, { publicOrigin: API_PUBLIC_ORIGIN });
   return res.json({ ok: true });
 }));
+
+app.get("/auth/session", optionalAuth, (req, res) => {
+  if (!req.user) {
+    return res.json({ authenticated: false });
+  }
+
+  return res.json({
+    authenticated: true,
+    user: req.user,
+  });
+});
 
 app.get("/auth/me", requireAuth, (req, res) => {
   return res.json({ user: req.user });

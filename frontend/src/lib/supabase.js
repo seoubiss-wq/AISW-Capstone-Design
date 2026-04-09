@@ -1,7 +1,14 @@
 import { createClient } from "@supabase/supabase-js";
 
-const SUPABASE_URL = String(import.meta.env.REACT_APP_SUPABASE_URL || "").trim().replace(/\/$/, "");
-const SUPABASE_PUBLISHABLE_KEY = String(import.meta.env.REACT_APP_SUPABASE_PUBLISHABLE_KEY || "").trim();
+function readScopedSupabaseEnv(baseName) {
+  const scopedValue = import.meta.env.PROD
+    ? import.meta.env[`PROD_${baseName}`]
+    : import.meta.env[`DEV_${baseName}`];
+  return String(scopedValue || "").trim();
+}
+
+const SUPABASE_URL = readScopedSupabaseEnv("SUPABASE_URL").replace(/\/$/, "");
+const SUPABASE_PUBLISHABLE_KEY = readScopedSupabaseEnv("SUPABASE_PUBLISHABLE_KEY");
 
 export const hasSupabaseAuthConfig = Boolean(SUPABASE_URL && SUPABASE_PUBLISHABLE_KEY);
 
@@ -104,6 +111,13 @@ export function getSupabaseClient() {
   }
 
   return supabaseClient;
+}
+
+export function getSupabaseAuthConfig() {
+  return {
+    url: SUPABASE_URL,
+    publishableKey: SUPABASE_PUBLISHABLE_KEY,
+  };
 }
 
 export function buildSupabaseGoogleRedirectUrl(locationLike = window.location) {

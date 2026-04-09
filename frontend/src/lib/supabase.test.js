@@ -2,6 +2,7 @@ import { expect, test } from "vitest";
 import {
   buildSupabaseStoragePrefix,
   clearSupabaseAuthStorage,
+  getSupabaseAuthConfig,
   getSupabaseBridgeStorage,
 } from "./supabase";
 
@@ -44,4 +45,11 @@ test("clearSupabaseAuthStorage removes persisted Supabase auth artifacts", () =>
 
 test("getSupabaseBridgeStorage prefers sessionStorage for ephemeral OAuth bridging", () => {
   expect(getSupabaseBridgeStorage()).toBe(window.sessionStorage);
+});
+
+test("getSupabaseAuthConfig uses DEV scoped env values in local builds", () => {
+  const config = getSupabaseAuthConfig();
+
+  expect(config.url).toMatch(/^https:\/\/.+\.supabase\.co$/);
+  expect(config.publishableKey).toMatch(/^sb_publishable_/);
 });

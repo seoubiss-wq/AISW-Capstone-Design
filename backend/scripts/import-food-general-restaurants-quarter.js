@@ -6,11 +6,9 @@ const { Pool } = require("pg");
 const { TextDecoder } = require("util");
 const { buildDbSslConfig } = require("./shared/dbConfig");
 
-const DATABASE_URL = (
-  process.env.DATABASE_URL ||
-  process.env.SUPABASE_DB_URL ||
-  process.env.SUPABASE_DATABASE_URL ||
-  ""
+const IS_PRODUCTION = process.env.NODE_ENV === "production";
+const DATABASE_URL = String(
+  (IS_PRODUCTION ? process.env.PROD_DATABASE_URL : process.env.DEV_DATABASE_URL) || "",
 ).trim();
 
 const PROJECT_ROOT = path.join(__dirname, "..", "..");
@@ -62,7 +60,7 @@ const COLUMN_SPECS = [
 ];
 
 if (!DATABASE_URL) {
-  console.error("DATABASE_URL or SUPABASE_DB_URL is required.");
+  console.error("DEV_DATABASE_URL or PROD_DATABASE_URL is required.");
   process.exit(1);
 }
 
