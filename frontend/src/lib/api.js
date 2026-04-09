@@ -1,9 +1,14 @@
-function resolveApiBaseUrl() {
-  const envApiBaseUrl = String(import.meta.env.REACT_APP_API_BASE_URL || "").trim().replace(/\/$/, "");
+export function resolveApiBaseUrl(env = import.meta.env) {
+  const forceSameOrigin =
+    String(env.REACT_APP_FORCE_SAME_ORIGIN || "")
+      .trim()
+      .toLowerCase() === "true";
 
-  if (!import.meta.env.PROD) {
-    return envApiBaseUrl || "http://localhost:5500";
+  if (forceSameOrigin) {
+    return "";
   }
+
+  const envApiBaseUrl = String(env.REACT_APP_API_BASE_URL || "").trim().replace(/\/$/, "");
 
   if (!envApiBaseUrl) {
     return "";
@@ -16,20 +21,25 @@ function resolveApiBaseUrl() {
     }
   } catch {}
 
+  if (!env.PROD) {
+    return envApiBaseUrl;
+  }
+
   return envApiBaseUrl;
 }
 
-const API_BASE_URL = resolveApiBaseUrl();
-
-export function resolveApiUrl(path) {
+export function resolveApiUrl(path, env = import.meta.env) {
   if (!path) return path;
   if (/^https?:\/\//i.test(path)) {
     return path;
   }
-  if (!API_BASE_URL) {
+
+  const apiBaseUrl = resolveApiBaseUrl(env);
+  if (!apiBaseUrl) {
     return path;
   }
-  return `${API_BASE_URL}${path.startsWith("/") ? "" : "/"}${path}`;
+
+  return `${apiBaseUrl}${path.startsWith("/") ? "" : "/"}${path}`;
 }
 
 export async function readJson(response) {
@@ -37,8 +47,10 @@ export async function readJson(response) {
   const payload = contentType.includes("application/json") ? await response.json() : {};
 
   if (!response.ok) {
-    const error = new Error(payload.error || "?붿껌??泥섎━?섏? 紐삵뻽?듬땲??");
+    const error = new Error(payload.error || "요청을 처리하지 못했습니다.");
     error.status = response.status;
+    error.code = payload.code || "";
+    error.payload = payload;
     throw error;
   }
 
@@ -56,5 +68,6 @@ export async function request(path, options = {}) {
     credentials: "include",
     headers,
   });
+
   return readJson(response);
 }

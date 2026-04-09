@@ -1,6 +1,12 @@
 {
   "scripts": {
-    "start": "concurrently \"npm start --prefix backend\" \"npm start --prefix frontend\"",
+    "start": "npm run dev:proxy",
+    "dev:proxy": "concurrently \"npm start --prefix backend\" \"npm start --prefix frontend\"",
+    "dev:split": "npm run dev:proxy",
+    "dev:same-origin": "npm run build:same-origin --prefix frontend && concurrently \"npm run build:watch:same-origin --prefix frontend\" \"npm start --prefix backend\"",
+    "dev:mobile": "npm run dev:same-origin",
+    "mobile:url": "node scripts/print-local-urls.mjs 3000",
+    "mobile:url:auth": "node scripts/print-local-urls.mjs 5500",
     "build": "npm run build --prefix frontend",
     "lint": "npm run lint --prefix backend && npm run lint --prefix frontend",
     "test": "npm test --prefix backend && npm run test:ci --prefix frontend",

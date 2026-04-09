@@ -14,11 +14,16 @@ import {
 import { sessionBootstrapQueryOptions } from "./queries/session";
 
 function resolveApiBaseUrl() {
-  const envApiBaseUrl = String(import.meta.env.REACT_APP_API_BASE_URL || "").trim().replace(/\/$/, "");
+  const forceSameOrigin =
+    String(import.meta.env.REACT_APP_FORCE_SAME_ORIGIN || "")
+      .trim()
+      .toLowerCase() === "true";
 
-  if (!import.meta.env.PROD) {
-    return envApiBaseUrl || "http://localhost:5500";
+  if (forceSameOrigin) {
+    return "";
   }
+
+  const envApiBaseUrl = String(import.meta.env.REACT_APP_API_BASE_URL || "").trim().replace(/\/$/, "");
 
   if (!envApiBaseUrl) {
     return "";
@@ -30,6 +35,10 @@ function resolveApiBaseUrl() {
       return "";
     }
   } catch {}
+
+  if (!import.meta.env.PROD) {
+    return envApiBaseUrl;
+  }
 
   return envApiBaseUrl;
 }
@@ -466,6 +475,8 @@ async function readJson(response) {
   if (!response.ok) {
     const error = new Error(payload.error || "요청을 처리하지 못했습니다.");
     error.status = response.status;
+    error.code = payload.code || "";
+    error.payload = payload;
     throw error;
   }
   return payload;
@@ -987,6 +998,7 @@ function AuthScreen({
   booting,
   authLoading,
   authForm,
+  pendingGoogleLink,
   agreements,
   onChangeForm,
   onToggleAgreement,
@@ -1092,9 +1104,17 @@ function AuthScreen({
                   placeholder={isLogin ? "아이디를 입력해 주세요" : "email@example.com"}
                   type="email"
                   value={authForm.email}
+                  readOnly={Boolean(isLogin && pendingGoogleLink?.email)}
                   onChange={(event) => onChangeForm("email", event.target.value)}
                 />
               </label>
+              {isLogin && pendingGoogleLink?.email ? (
+                <div className="rounded-[1rem] bg-secondary-container/50 px-5 py-4 text-sm font-semibold leading-relaxed text-on-secondary-container">
+                  기존 이메일/비밀번호 계정이 있습니다.
+                  <br />
+                  <span className="font-black">{pendingGoogleLink.email}</span> 의 비밀번호를 입력하면 Google 계정과 안전하게 통합합니다.
+                </div>
+              ) : null}
               <label className="block">
                 <span className="mb-2 block text-lg font-bold text-on-surface">비밀번호</span>
                 <input
@@ -1211,6 +1231,7 @@ export default function App() {
   const [user, setUser] = useState(null);
   const [message, setMessage] = useState(null);
   const [authLoading, setAuthLoading] = useState(false);
+  const [pendingGoogleLink, setPendingGoogleLink] = useState(null);
   const [savingPreferences, setSavingPreferences] = useState(false);
   const [loading, setLoading] = useState(false);
   const [activeView, setActiveView] = useState("home");
@@ -1937,6 +1958,7 @@ export default function App() {
     oauthExchangeTokenRef.current = "";
     setToken("");
     setUser(null);
+    setPendingGoogleLink(null);
     setItems([]);
     setHasRecommendationResponse(false);
     setFavorites([]);
@@ -1999,6 +2021,22 @@ export default function App() {
     setAgreements((current) => ({ ...current, [key]: !current[key] }));
   }
 
+  function handleModeChange(nextMode) {
+    setPendingGoogleLink(null);
+    setMode(nextMode);
+  }
+
+  async function finalizeAuthenticatedSession(responseUser, successMessage) {
+    setPendingGoogleLink(null);
+    setToken(AUTH_SESSION_MARKER);
+    await sessionQuery.refetch();
+    setUser(responseUser || null);
+    setActiveView("home");
+    setMode("login");
+    setAuthForm({ name: "", email: "", password: "" });
+    setMessage(buildMessage("ok", successMessage));
+  }
+
   async function exchangeGoogleOAuthSession(session) {
     if (!session?.access_token) {
       throw new Error("Google 로그인 세션을 확인하지 못했습니다.");
@@ -2021,19 +2059,31 @@ export default function App() {
         window.history.replaceState(window.history.state, "", nextUrl);
       }
 
-      setToken(AUTH_SESSION_MARKER);
-      await sessionQuery.refetch();
-      setUser(response.user || null);
-      setActiveView("home");
-      setMode("login");
-      setAuthForm({ name: "", email: "", password: "" });
-      setMessage(buildMessage("ok", "Google 계정으로 로그인했습니다."));
+      await finalizeAuthenticatedSession(response.user || null, "Google 계정으로 로그인했습니다.");
+      return;
     } catch (error) {
       oauthExchangeTokenRef.current = "";
       await clearSupabaseBridgeSession(getSupabaseClient());
       if (typeof window !== "undefined") {
         const nextUrl = stripSupabaseAuthParams(window.location.href);
         window.history.replaceState(window.history.state, "", nextUrl);
+      }
+      if (error?.status === 409) {
+        const nextEmail = String(session.user?.email || "").trim();
+        setPendingGoogleLink({
+          accessToken: session.access_token,
+          email: nextEmail,
+        });
+        setActiveView("auth");
+        setMode("login");
+        setAuthForm({ name: "", email: nextEmail, password: "" });
+        setMessage(
+          buildMessage(
+            "neutral",
+            "기존 이메일/비밀번호 계정이 있어요. 비밀번호를 한 번 입력하면 Google 로그인과 통합됩니다.",
+          ),
+        );
+        return;
       }
       throw error;
     } finally {
@@ -2088,9 +2138,18 @@ export default function App() {
         throw new Error("필수 약관 동의 후 회원가입을 진행해 주세요.");
       }
 
-      const path = mode === "login" ? "/auth/login" : "/auth/register";
-      const payload =
-        mode === "login"
+      const isGoogleLinkMerge = mode === "login" && Boolean(pendingGoogleLink?.accessToken);
+      const path = isGoogleLinkMerge
+        ? "/auth/oauth/google/merge"
+        : mode === "login"
+          ? "/auth/login"
+          : "/auth/register";
+      const payload = isGoogleLinkMerge
+        ? {
+            accessToken: pendingGoogleLink.accessToken,
+            password: authForm.password,
+          }
+        : mode === "login"
           ? { email: authForm.email, password: authForm.password }
           : authForm;
 
@@ -2099,13 +2158,15 @@ export default function App() {
         body: JSON.stringify(payload),
       });
 
-      setToken(AUTH_SESSION_MARKER);
-      await sessionQuery.refetch();
-      setUser(response.user || null);
-      setActiveView("home");
-      setMode("login");
-      setAuthForm({ name: "", email: "", password: "" });
-      setMessage(buildMessage("ok", mode === "login" ? "로그인되었습니다." : "회원가입이 완료되었습니다."));
+      await finalizeAuthenticatedSession(
+        response.user || null,
+        isGoogleLinkMerge
+          ? "Google 계정과 기존 계정을 통합했습니다."
+          : mode === "login"
+            ? "로그인되었습니다."
+            : "회원가입이 완료되었습니다.",
+      );
+      return;
     } catch (error) {
       handleRequestError(error);
     } finally {
@@ -2705,10 +2766,11 @@ export default function App() {
         message={message}
         mode={mode}
         onChangeForm={handleFormChange}
-        onChangeMode={setMode}
+        onChangeMode={handleModeChange}
         onSocialLogin={handleSocialLogin}
         onSubmit={handleAuthSubmit}
         onToggleAgreement={handleToggleAgreement}
+        pendingGoogleLink={pendingGoogleLink}
       />
     );
   }

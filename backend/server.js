@@ -32,7 +32,9 @@ const {
 const {
   canAutoLinkGoogleAccount,
   GOOGLE_AUTH_PROVIDER,
+  hasAuthProvider,
   LOCAL_AUTH_PROVIDER,
+  mergeAuthProvider,
   normalizeAuthProvider,
 } = require("./scripts/shared/authProvider");
 const {
@@ -2334,6 +2336,13 @@ app.post("/auth/login", asyncHandler(async (req, res) => {
   const password = String(req.body?.password || "");
   const user = await getUserByLoginIdentifier(email);
 
+  if (user && !hasAuthProvider(user, LOCAL_AUTH_PROVIDER)) {
+    return res.status(403).json({
+      error: "Google 계정으로 가입된 이메일입니다. Google로 로그인해 주세요.",
+      code: "LOCAL_PASSWORD_LOGIN_UNAVAILABLE",
+    });
+  }
+
   if (!user || !verifyPassword(password, user.passwordHash)) {
     return res.status(401).json({ error: "이메일 또는 비밀번호가 올바르지 않습니다." });
   }
@@ -2394,6 +2403,67 @@ app.post("/auth/oauth/google", async (req, res) => {
     console.error(error);
     const status = Number.isInteger(error?.status) ? error.status : 500;
     const message = error?.message || "Google OAuth login failed.";
+    return res.status(status).json({ error: message });
+  }
+});
+
+app.post("/auth/oauth/google/merge", async (req, res) => {
+  try {
+    const accessToken = String(req.body?.accessToken || "").trim();
+    const password = String(req.body?.password || "");
+
+    if (!accessToken) {
+      return res.status(400).json({ error: "Google OAuth access token is required." });
+    }
+    if (!password) {
+      return res.status(400).json({ error: "기존 비밀번호를 입력해 주세요." });
+    }
+
+    const googleProfile = await fetchSupabaseUserProfile({
+      accessToken,
+      supabaseUrl: SUPABASE_URL,
+      supabasePublishableKey: SUPABASE_PUBLISHABLE_KEY,
+    });
+
+    let user = await getUserByEmail(googleProfile.email);
+    if (!user) {
+      return res.status(404).json({
+        error: "기존 계정을 찾지 못했습니다. 먼저 이메일/비밀번호로 가입해 주세요.",
+      });
+    }
+
+    if (!hasAuthProvider(user, LOCAL_AUTH_PROVIDER)) {
+      return res.status(409).json({
+        error: "이미 Google 계정으로 연결된 이메일입니다. Google로 바로 로그인해 주세요.",
+        code: "GOOGLE_ACCOUNT_ALREADY_LINKED",
+      });
+    }
+
+    if (!verifyPassword(password, user.passwordHash)) {
+      return res.status(401).json({ error: "기존 비밀번호가 올바르지 않습니다." });
+    }
+
+    if (!canAutoLinkGoogleAccount(user) || !String(user.name || "").trim()) {
+      user = await updateUserById(user.id, (current) => ({
+        ...current,
+        authProvider: mergeAuthProvider(current.authProvider, GOOGLE_AUTH_PROVIDER),
+        name: String(current.name || "").trim() || googleProfile.name || current.name,
+      }));
+    }
+
+    const token = await createSession(user.id);
+    setSessionCookie(res, req, token, {
+      publicOrigin: API_PUBLIC_ORIGIN,
+      maxAgeMs: TOKEN_TTL_MS,
+    });
+    return res.json({
+      merged: true,
+      user: sanitizeUser(ensureUserDataShape(user)),
+    });
+  } catch (error) {
+    console.error(error);
+    const status = Number.isInteger(error?.status) ? error.status : 500;
+    const message = error?.message || "Google 계정 통합에 실패했습니다.";
     return res.status(status).json({ error: message });
   }
 });
