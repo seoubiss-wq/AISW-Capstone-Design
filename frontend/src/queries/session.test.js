@@ -1,22 +1,26 @@
-import { expect, test, vi } from "vitest";
+import { afterEach, expect, test, vi } from "vitest";
 import { sessionBootstrapQueryOptions } from "./session";
 import * as apiModule from "../lib/api";
 
-test("returns unauthenticated without requesting protected session resources on 401 profile", async () => {
+afterEach(() => {
+  vi.restoreAllMocks();
+});
+
+test("returns unauthenticated without requesting protected session resources when no session exists", async () => {
   const requestSpy = vi.spyOn(apiModule, "request");
-  requestSpy.mockRejectedValueOnce(Object.assign(new Error("Unauthorized"), { status: 401 }));
+  requestSpy.mockResolvedValueOnce({ authenticated: false });
 
   const result = await sessionBootstrapQueryOptions().queryFn();
 
   expect(result).toEqual({ authenticated: false });
   expect(requestSpy).toHaveBeenCalledTimes(1);
-  expect(requestSpy).toHaveBeenCalledWith("/auth/me", { method: "GET" });
+  expect(requestSpy).toHaveBeenCalledWith("/auth/session", { method: "GET" });
 });
 
 test("loads the remaining session resources after profile authentication succeeds", async () => {
   const requestSpy = vi.spyOn(apiModule, "request");
   requestSpy
-    .mockResolvedValueOnce({ user: { id: "user-1" } })
+    .mockResolvedValueOnce({ authenticated: true, user: { id: "user-1" } })
     .mockResolvedValueOnce({ preferences: {} })
     .mockResolvedValueOnce({ favorites: [] })
     .mockResolvedValueOnce({ history: [] })
@@ -32,6 +36,6 @@ test("loads the remaining session resources after profile authentication succeed
     historyPayload: { history: [] },
     visitPayload: { visits: [] },
   });
-  expect(requestSpy).toHaveBeenNthCalledWith(1, "/auth/me", { method: "GET" });
+  expect(requestSpy).toHaveBeenNthCalledWith(1, "/auth/session", { method: "GET" });
   expect(requestSpy).toHaveBeenCalledTimes(5);
 });

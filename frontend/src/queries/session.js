@@ -8,30 +8,27 @@ export function sessionBootstrapQueryOptions() {
     staleTime: 30 * 1000,
     refetchOnWindowFocus: false,
     queryFn: async () => {
-      try {
-        const profile = await request("/auth/me", { method: "GET" });
-        const [preferencePayload, favoritesPayload, historyPayload, visitPayload] =
-          await Promise.all([
-            request("/user/preferences", { method: "GET" }),
-            request("/user/favorites", { method: "GET" }),
-            request("/user/history", { method: "GET" }),
-            request("/user/visits", { method: "GET" }),
-          ]);
-
-        return {
-          authenticated: true,
-          profile,
-          preferencePayload,
-          favoritesPayload,
-          historyPayload,
-          visitPayload,
-        };
-      } catch (error) {
-        if (error?.status === 401) {
-          return { authenticated: false };
-        }
-        throw error;
+      const sessionPayload = await request("/auth/session", { method: "GET" });
+      if (!sessionPayload?.authenticated) {
+        return { authenticated: false };
       }
+
+      const [preferencePayload, favoritesPayload, historyPayload, visitPayload] =
+        await Promise.all([
+          request("/user/preferences", { method: "GET" }),
+          request("/user/favorites", { method: "GET" }),
+          request("/user/history", { method: "GET" }),
+          request("/user/visits", { method: "GET" }),
+        ]);
+
+      return {
+        authenticated: true,
+        profile: { user: sessionPayload.user || null },
+        preferencePayload,
+        favoritesPayload,
+        historyPayload,
+        visitPayload,
+      };
     },
   };
 }
