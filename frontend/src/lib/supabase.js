@@ -1,25 +1,7 @@
 import { createClient } from "@supabase/supabase-js";
 
-function readScopedSupabaseEnv(baseName) {
-  const scopedValue = (() => {
-    switch (baseName) {
-      case "SUPABASE_URL":
-        return import.meta.env.PROD
-          ? import.meta.env.PROD_SUPABASE_URL
-          : import.meta.env.DEV_SUPABASE_URL;
-      case "SUPABASE_PUBLISHABLE_KEY":
-        return import.meta.env.PROD
-          ? import.meta.env.PROD_SUPABASE_PUBLISHABLE_KEY
-          : import.meta.env.DEV_SUPABASE_PUBLISHABLE_KEY;
-      default:
-        return "";
-    }
-  })();
-  return String(scopedValue || "").trim();
-}
-
-const SUPABASE_URL = readScopedSupabaseEnv("SUPABASE_URL").replace(/\/$/, "");
-const SUPABASE_PUBLISHABLE_KEY = readScopedSupabaseEnv("SUPABASE_PUBLISHABLE_KEY");
+const SUPABASE_URL = String(__SUPABASE_URL__ || "").trim().replace(/\/$/, "");
+const SUPABASE_PUBLISHABLE_KEY = String(__SUPABASE_PUBLISHABLE_KEY__ || "").trim();
 
 export const hasSupabaseAuthConfig = Boolean(SUPABASE_URL && SUPABASE_PUBLISHABLE_KEY);
 

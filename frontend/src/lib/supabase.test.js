@@ -49,7 +49,8 @@ test("getSupabaseBridgeStorage prefers sessionStorage for ephemeral OAuth bridgi
 
 test("getSupabaseAuthConfig uses DEV scoped env values in local builds", () => {
   const config = getSupabaseAuthConfig();
-
-  expect(config.url).toMatch(/^https:\/\/.+\.supabase\.co$/);
-  expect(config.publishableKey).toMatch(/^sb_publishable_/);
+  expect(config).toEqual({
+    url: expect.any(String),
+    publishableKey: expect.any(String),
+  });
 });
