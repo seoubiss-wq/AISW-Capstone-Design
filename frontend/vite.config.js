@@ -48,6 +48,41 @@ export default defineConfig(({ mode }) => {
     build: {
       outDir: "build",
       emptyOutDir: true,
+      rollupOptions: {
+        output: {
+          manualChunks(id) {
+            const normalizedId = String(id || "").replace(/\\/g, "/");
+
+            if (normalizedId.includes("/src/GoogleRouteMap.jsx") ||
+              normalizedId.includes("/src/MapDirectionsPage.jsx") ||
+              normalizedId.includes("/src/googleMapsLoader.js")) {
+              return "maps";
+            }
+
+            if (normalizedId.includes("/node_modules/")) {
+              if (
+                normalizedId.includes("/react/") ||
+                normalizedId.includes("/react-dom/") ||
+                normalizedId.includes("/scheduler/")
+              ) {
+                return "react-vendor";
+              }
+
+              if (normalizedId.includes("/@tanstack/react-query/")) {
+                return "query-vendor";
+              }
+
+              if (normalizedId.includes("/@supabase/supabase-js/")) {
+                return "supabase-vendor";
+              }
+
+              return "vendor";
+            }
+
+            return undefined;
+          },
+        },
+      },
     },
     test: {
       environment: "jsdom",

@@ -1,5 +1,5 @@
 import { useQuery } from "@tanstack/react-query";
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { Suspense, lazy, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import "./App.css";
 import {
   AuthScreen,
@@ -53,7 +53,6 @@ import {
   shouldWaitForLocationBeforeRecommendation,
   splitTokens,
 } from "./app/appSupport";
-import GoogleRouteMap from "./GoogleRouteMap";
 import { request } from "./lib/api";
 import {
   buildSupabaseGoogleRedirectUrl,
@@ -64,11 +63,12 @@ import {
   isSupabaseGoogleSession,
   stripSupabaseAuthParams,
 } from "./lib/supabase";
-import MapDirectionsPage from "./MapDirectionsPage";
 import { sessionBootstrapQueryOptions } from "./queries/session";
 
+const GoogleRouteMap = lazy(() => import("./GoogleRouteMap"));
+const MapDirectionsPage = lazy(() => import("./MapDirectionsPage"));
+
 export {
-  buildAiQuickAccessItems,
   buildRecommendationAssistantText,
   buildRecommendationDecisionBrief,
   buildRecommendationRequestBody,
@@ -79,6 +79,32 @@ export {
   shouldUseOriginLocationAsCurrentLocation,
   shouldWaitForLocationBeforeRecommendation,
 } from "./app/appSupport";
+
+function MapPreviewFallback() {
+  return (
+    <div className="absolute inset-0 flex items-center justify-center bg-surface-container-lowest">
+      <p className="text-sm font-semibold text-on-surface-variant">
+        지도를 불러오는 중입니다.
+      </p>
+    </div>
+  );
+}
+
+function MapPageFallback({ isMobileDevice }) {
+  return (
+    <main
+      className={`page-fade mx-auto flex min-h-[calc(100vh-5rem)] w-full max-w-screen-2xl flex-col px-4 pb-16 pt-20 md:px-8 ${
+        isMobileDevice ? "pb-32" : ""
+      }`}
+    >
+      <div className="flex flex-1 items-center justify-center rounded-[2rem] bg-surface-container-lowest">
+        <p className="text-base font-semibold text-on-surface-variant">
+          지도 화면을 불러오는 중입니다.
+        </p>
+      </div>
+    </main>
+  );
+}
 
 export default function App() {
   const [token, setToken] = useState("");
@@ -769,54 +795,6 @@ export default function App() {
       ignore = true;
     };
   }, [sessionQuery.data?.authenticated]);
-
-  /* useEffect(() => {
-    if (!token) {
-      setBooting(false);
-      return;
-    }
-    return;
-    let ignore = false;
-
-    const loadSession = async () => {
-      try {
-        const [profile, preferencePayload, favoritesPayload, historyPayload, visitPayload] =
-          await Promise.all([
-            request("/auth/me", { method: "GET" }, token),
-            request("/user/preferences", { method: "GET" }, token),
-            request("/user/favorites", { method: "GET" }, token),
-            request("/user/history", { method: "GET" }, token),
-            request("/user/visits", { method: "GET" }, token),
-          ]);
-
-        if (ignore) return;
-
-        setUser(profile.user || null);
-        setFavorites(favoritesPayload.favorites || []);
-        setHistory(historyPayload.history || []);
-        setVisitHistory(visitPayload.visits || []);
-        applyPreferencePayload(preferencePayload);
-      } catch (error) {
-        if (ignore) return;
-        clearSession();
-        setMessage(
-          buildMessage(
-            "error",
-            error?.status === 401
-              ? "로그인 세션이 만료되었습니다. 다시 로그인해 주세요."
-              : error.message,
-          ),
-        );
-      } finally {
-        if (!ignore) setBooting(false);
-      }
-    };
-
-    loadSession();
-    return () => {
-      ignore = true;
-    };
-  }, [token]); */
 
   function clearSession() {
     oauthExchangeTokenRef.current = "";
@@ -2337,32 +2315,34 @@ export default function App() {
             </div>
             <div className="route-canvas relative h-72 overflow-hidden rounded-[1.75rem]" style={{ minHeight: "18rem" }}>
               {mapSelectedItem ? (
-                <>
-                  <GoogleRouteMap
-                    currentLocation={currentLocation}
-                    item={mapSelectedItem}
-                    items={mapItems}
-                    routeMode={routeMode}
-                    selectionSource={mapSelectionSource}
-                    onSelectItem={(itemId) => selectMapItem(itemId, "map")}
-                  />
-                  <div className="route-canvas__veil" />
-                  <div className="pointer-events-none absolute inset-x-5 bottom-5 z-10 flex items-end justify-between gap-4">
-                    <div className="rounded-[1.25rem] bg-white/88 px-4 py-3 shadow-lg backdrop-blur-md">
-                      <p className="text-xs font-black uppercase tracking-[0.2em] text-primary">Map Preview</p>
-                      <p className="mt-1 text-sm font-semibold text-on-surface">
-                        {mapSelectedItem.name} 위치와 주변 추천 식당을 실제 지도에서 보여주고 있습니다.
-                      </p>
+                <Suspense fallback={<MapPreviewFallback />}>
+                  <>
+                    <GoogleRouteMap
+                      currentLocation={currentLocation}
+                      item={mapSelectedItem}
+                      items={mapItems}
+                      routeMode={routeMode}
+                      selectionSource={mapSelectionSource}
+                      onSelectItem={(itemId) => selectMapItem(itemId, "map")}
+                    />
+                    <div className="route-canvas__veil" />
+                    <div className="pointer-events-none absolute inset-x-5 bottom-5 z-10 flex items-end justify-between gap-4">
+                      <div className="rounded-[1.25rem] bg-white/88 px-4 py-3 shadow-lg backdrop-blur-md">
+                        <p className="text-xs font-black uppercase tracking-[0.2em] text-primary">Map Preview</p>
+                        <p className="mt-1 text-sm font-semibold text-on-surface">
+                          {mapSelectedItem.name} 위치와 주변 추천 식당을 실제 지도에서 보여주고 있습니다.
+                        </p>
+                      </div>
+                      <button
+                        className="pointer-events-auto rounded-full bg-primary px-5 py-3 text-sm font-black text-white shadow-lg shadow-primary/25"
+                        type="button"
+                        onClick={() => setActiveView("map")}
+                      >
+                        전체 지도 열기
+                      </button>
                     </div>
-                    <button
-                      className="pointer-events-auto rounded-full bg-primary px-5 py-3 text-sm font-black text-white shadow-lg shadow-primary/25"
-                      type="button"
-                      onClick={() => setActiveView("map")}
-                    >
-                      전체 지도 열기
-                    </button>
-                  </div>
-                </>
+                  </>
+                </Suspense>
               ) : (
                 <div className="absolute inset-0 flex items-center justify-center bg-surface-container-lowest">
                   <p className="text-sm font-semibold text-on-surface-variant">
@@ -2782,57 +2762,61 @@ export default function App() {
       ) : null}
 
       {activeView === "map" ? (
-        <MapDirectionsPage
-          currentLocation={currentLocation}
-          isMobileDevice={isMobileDevice}
-          locationStatus={locationStatus}
-          mapItems={mapItems}
-          mapSelectedItem={mapSelectedItem}
-          mapSelectionSource={mapSelectionSource}
-          onBack={() => setActiveView("recommend")}
-          onOpenExternal={openExternal}
-          onOpenItem={openItem}
-          onRefreshLocation={requestCurrentLocation}
-          onRetry={() => runRecommendation(query || "내 주변 맛집 추천", "map", { skipChat: true })}
-          onRouteInfoChange={setRouteUi}
-          onRouteModeChange={(mode) => {
-            setRouteMode(mode);
-            setRouteUi((current) => ({
-              ...current,
-              mode,
-              status: currentLocation ? "loading" : "idle",
-              steps: [],
-              message: currentLocation
-                ? "경로를 다시 계산하는 중입니다."
-                : "현재 위치를 허용하면 웹 안에서 경로를 표시합니다.",
-            }));
-          }}
-          autoOpenDirectionsSignal={mapDirectionsOpenSignal}
-          onSelectItem={selectMapItem}
-          onStartDirections={handleStartDirections}
-          routeDistanceLabel={routeDistanceLabel}
-          routeDurationLabel={routeDurationLabel}
-          routeMode={routeMode}
-          routeModeOptions={ROUTE_MODE_OPTIONS}
-          routeSteps={routeSteps}
-          routeSummaryLabel={routeSummaryLabel}
-          routeUi={routeUi}
-        />
+        <Suspense fallback={<MapPageFallback isMobileDevice={isMobileDevice} />}>
+          <MapDirectionsPage
+            currentLocation={currentLocation}
+            isMobileDevice={isMobileDevice}
+            locationStatus={locationStatus}
+            mapItems={mapItems}
+            mapSelectedItem={mapSelectedItem}
+            mapSelectionSource={mapSelectionSource}
+            onBack={() => setActiveView("recommend")}
+            onOpenExternal={openExternal}
+            onOpenItem={openItem}
+            onRefreshLocation={requestCurrentLocation}
+            onRetry={() => runRecommendation(query || "내 주변 맛집 추천", "map", { skipChat: true })}
+            onRouteInfoChange={setRouteUi}
+            onRouteModeChange={(mode) => {
+              setRouteMode(mode);
+              setRouteUi((current) => ({
+                ...current,
+                mode,
+                status: currentLocation ? "loading" : "idle",
+                steps: [],
+                message: currentLocation
+                  ? "경로를 다시 계산하는 중입니다."
+                  : "현재 위치를 허용하면 웹 안에서 경로를 표시합니다.",
+              }));
+            }}
+            autoOpenDirectionsSignal={mapDirectionsOpenSignal}
+            onSelectItem={selectMapItem}
+            onStartDirections={handleStartDirections}
+            routeDistanceLabel={routeDistanceLabel}
+            routeDurationLabel={routeDurationLabel}
+            routeMode={routeMode}
+            routeModeOptions={ROUTE_MODE_OPTIONS}
+            routeSteps={routeSteps}
+            routeSummaryLabel={routeSummaryLabel}
+            routeUi={routeUi}
+          />
+        </Suspense>
       ) : null}
 
       {false ? (
         <main className="page-fade h-[calc(100vh-5rem)] w-full pt-20">
           <div className="route-canvas route-canvas--fullscreen relative h-full overflow-hidden">
             {mapSelectedItem ? (
-              <GoogleRouteMap
-                currentLocation={currentLocation}
-                item={mapSelectedItem}
-                items={mapItems}
-                onSelectItem={(itemId) => selectMapItem(itemId, "map")}
-                selectionSource={mapSelectionSource}
-                routeMode={routeMode}
-                onRouteInfoChange={setRouteUi}
-              />
+              <Suspense fallback={null}>
+                <GoogleRouteMap
+                  currentLocation={currentLocation}
+                  item={mapSelectedItem}
+                  items={mapItems}
+                  onSelectItem={(itemId) => selectMapItem(itemId, "map")}
+                  selectionSource={mapSelectionSource}
+                  routeMode={routeMode}
+                  onRouteInfoChange={setRouteUi}
+                />
+              </Suspense>
             ) : null}
             <div className="route-canvas__veil" />
             <button

@@ -139,41 +139,6 @@ function buildRecommendationDecisionBrief(item = {}) {
   return [...new Set(parts.filter(Boolean))].join(" · ");
 }
 
-function buildAiQuickAccessItems(history = [], popularTags = []) {
-  const recentItems = history
-    .slice(0, 3)
-    .map((entry, index) => {
-      const query = String(entry?.query || "").trim();
-      if (!query) return null;
-
-      return {
-        id: `recent-${entry?.id || index}`,
-        kind: "recent",
-        title: query,
-        query,
-        meta: formatRelativeDate(entry?.createdAt, "recently"),
-      };
-    })
-    .filter(Boolean);
-
-  const tagItems = popularTags
-    .map((tag) => {
-      const title = String(tag || "").trim();
-      if (!title) return null;
-
-      return {
-        id: `tag-${title}`,
-        kind: "tag",
-        title,
-        query: title.replace(/^#/, ""),
-        meta: "popular tag",
-      };
-    })
-    .filter(Boolean);
-
-  return [...recentItems, ...tagItems];
-}
-
 function buildAppHistoryState({ activeView, selectedItemId, detailItem }) {
   const shouldPersistSelectedItem = ["map", "detail", "reviews"].includes(activeView);
   return {
@@ -293,35 +258,6 @@ const DEMO_MENUS = [
       "https://images.unsplash.com/photo-1559847844-5315695dadae?auto=format&fit=crop&w=1200&q=80",
   },
 ];
-
-const DEMO_REVIEWS = [
-  {
-    id: "review-1",
-    author: "Eleanor Rigby",
-    daysAgo: "2일 전 방문",
-    rating: 5,
-    text: "직원 응대가 차분했고 좌석 간격이 넓어서 부모님과 식사하기 편했습니다. 음식도 과하지 않고 정갈했습니다.",
-    tags: ["조용한 분위기", "접근성 편함"],
-  },
-  {
-    id: "review-2",
-    author: "Arthur Miller",
-    daysAgo: "5일 전 방문",
-    rating: 5,
-    text: "대화에 집중하기 좋은 공간이었고, 향이 강하지 않아 누구와 가도 무난했습니다.",
-    tags: ["프라이빗 좌석", "발렛 가능"],
-  },
-  {
-    id: "review-3",
-    author: "김지연",
-    daysAgo: "1주 전 방문",
-    rating: 4,
-    text: "분위기가 차분하고 음식 설명도 친절했습니다. 한식 중심 추천을 원할 때 만족도가 높을 것 같습니다.",
-    tags: ["가족 식사", "친절한 서비스"],
-  },
-];
-
-void DEMO_REVIEWS;
 
 function resolveMediaUrl(url) {
   return resolveApiUrl(url);
@@ -464,28 +400,6 @@ function enrichItem(raw, index) {
   };
 }
 
-function legacyBuildExternalMapLinks(item) {
-  const query = [item?.name, item?.address].filter(Boolean).join(" ").trim();
-  const encodedQuery = encodeURIComponent(query || item?.name || "");
-  const encodedName = encodeURIComponent(item?.name || "식당");
-  const hasCoordinates =
-    Number.isFinite(item?.location?.lat) && Number.isFinite(item?.location?.lng);
-
-  return {
-    naver: encodedQuery ? `https://map.naver.com/p/search/${encodedQuery}` : "",
-    kakao: hasCoordinates
-      ? `https://map.kakao.com/link/map/${encodedName},${item.location.lat},${item.location.lng}`
-      : encodedQuery
-        ? `https://map.kakao.com/link/search/${encodedQuery}`
-        : "",
-    google:
-      item?.links?.googleMap ||
-      (encodedQuery ? `https://www.google.com/maps/search/?api=1&query=${encodedQuery}` : ""),
-  };
-}
-
-void legacyBuildExternalMapLinks;
-
 function buildPreferredExternalMapLinks(item) {
   const query = [item?.name, item?.address].filter(Boolean).join(" ").trim();
   const encodedQuery = encodeURIComponent(query || item?.name || "");
@@ -605,7 +519,6 @@ export {
   getRecommendationFeedbackState,
   getRecommendationOpenStatusLabel,
   buildRecommendationDecisionBrief,
-  buildAiQuickAccessItems,
   buildAppHistoryState,
   isAppHistoryState,
   getAppHistorySnapshot,
