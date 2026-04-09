@@ -1,3 +1,4 @@
+/* global __SUPABASE_URL__, __SUPABASE_PUBLISHABLE_KEY__ */
 import { createClient } from "@supabase/supabase-js";
 import { resolveApiUrl } from "./api";
 
@@ -5,6 +6,7 @@ const DEFAULT_SUPABASE_CONFIG = {
   url: String(__SUPABASE_URL__ || "").trim().replace(/\/$/, ""),
   publishableKey: String(__SUPABASE_PUBLISHABLE_KEY__ || "").trim(),
 };
+const DEFAULT_SUPABASE_URL = DEFAULT_SUPABASE_CONFIG.url;
 
 let supabaseClient = null;
 let supabaseAuthConfig = { ...DEFAULT_SUPABASE_CONFIG };
@@ -41,7 +43,7 @@ function getBrowserStorageCandidates() {
   }
 }
 
-export function buildSupabaseStoragePrefix(supabaseUrl = SUPABASE_URL) {
+export function buildSupabaseStoragePrefix(supabaseUrl = DEFAULT_SUPABASE_URL) {
   try {
     const hostname = new URL(String(supabaseUrl || "").trim()).hostname;
     const projectRef = hostname.split(".")[0];
@@ -51,7 +53,10 @@ export function buildSupabaseStoragePrefix(supabaseUrl = SUPABASE_URL) {
   }
 }
 
-export function clearSupabaseAuthStorage(storages = getBrowserStorageCandidates(), supabaseUrl = SUPABASE_URL) {
+export function clearSupabaseAuthStorage(
+  storages = getBrowserStorageCandidates(),
+  supabaseUrl = DEFAULT_SUPABASE_URL,
+) {
   const prefix = buildSupabaseStoragePrefix(supabaseUrl);
   if (!prefix) return;
 
@@ -133,11 +138,21 @@ export async function hydrateSupabaseAuthConfig(fetchImpl = fetch) {
         }
       } catch {}
 
-      return getSupabaseAuthConfig();
+      const currentConfig = getSupabaseAuthConfig();
+      if (!currentConfig.url || !currentConfig.publishableKey) {
+        supabaseAuthConfigHydrationPromise = null;
+      }
+
+      return currentConfig;
     })();
   }
 
-  return supabaseAuthConfigHydrationPromise;
+  const hydratedConfig = await supabaseAuthConfigHydrationPromise;
+  if (!hydratedConfig.url || !hydratedConfig.publishableKey) {
+    supabaseAuthConfigHydrationPromise = null;
+  }
+
+  return hydratedConfig;
 }
 
 export function getSupabaseClient() {
