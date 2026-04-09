@@ -1,9 +1,20 @@
 import { createClient } from "@supabase/supabase-js";
 
 function readScopedSupabaseEnv(baseName) {
-  const scopedValue = import.meta.env.PROD
-    ? import.meta.env[`PROD_${baseName}`]
-    : import.meta.env[`DEV_${baseName}`];
+  const scopedValue = (() => {
+    switch (baseName) {
+      case "SUPABASE_URL":
+        return import.meta.env.PROD
+          ? import.meta.env.PROD_SUPABASE_URL
+          : import.meta.env.DEV_SUPABASE_URL;
+      case "SUPABASE_PUBLISHABLE_KEY":
+        return import.meta.env.PROD
+          ? import.meta.env.PROD_SUPABASE_PUBLISHABLE_KEY
+          : import.meta.env.DEV_SUPABASE_PUBLISHABLE_KEY;
+      default:
+        return "";
+    }
+  })();
   return String(scopedValue || "").trim();
 }
 
