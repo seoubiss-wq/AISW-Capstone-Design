@@ -10,6 +10,7 @@
     "mobile:url": "node scripts/print-local-urls.mjs 3000",
     "mobile:url:auth": "node scripts/print-local-urls.mjs 5500",
     "build": "npm run build --prefix frontend",
+    "check:encoding": "node scripts/check-encoding.mjs",
     "lint:backend": "npm run lint --prefix backend",
     "lint:frontend": "npm run lint --prefix frontend",
     "lint": "run-s lint:backend lint:frontend",
