@@ -1369,11 +1369,6 @@ export default function App() {
         resolvedCurrentLocation = await requestCurrentLocation();
       }
 
-      if (!resolvedCurrentLocation && isNearbyRecommendationSeed(trimmed)) {
-        setMessage(buildMessage("error", "현재 위치 권한을 허용한 뒤 내 주변 맛집 추천을 사용할 수 있어요."));
-        return;
-      }
-
       const payload = await request(
         "/recommend",
         {
@@ -1403,7 +1398,23 @@ export default function App() {
         payload.originSource &&
         payload.originSource !== "browser_geolocation"
       ) {
-        setLocationStatus("현재 위치를 정확히 표시하려면 브라우저 위치 권한을 허용해 주세요.");
+        setLocationStatus("브라우저 현재 위치를 읽지 못해 대략적인 지역 기준으로 추천했습니다.");
+        if (isNearbyRecommendationSeed(trimmed)) {
+          setMessage(
+            buildMessage(
+              "neutral",
+              "정확한 현재 위치를 읽지 못해 대략적인 지역 기준으로 먼저 추천했어요.",
+            ),
+          );
+        }
+      } else if (!resolvedCurrentLocation && isNearbyRecommendationSeed(trimmed)) {
+        setLocationStatus("현재 위치를 확인하지 못해 지역 기반 추천 정확도가 낮을 수 있습니다.");
+        setMessage(
+          buildMessage(
+            "error",
+            "현재 위치를 확인하지 못했어요. 위치 권한을 다시 허용하거나 지역명을 함께 입력해 주세요.",
+          ),
+        );
       }
 
       const nextItems = Array.isArray(payload.items) ? payload.items : [];

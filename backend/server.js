@@ -43,6 +43,9 @@ const {
   buildAllowedCorsOrigins,
   resolveCorsOrigin,
 } = require("./scripts/shared/corsConfig");
+const {
+  resolveApproximateLocationFromRequest,
+} = require("./scripts/shared/clientLocationFallback");
 
 const app = express();
 app.set("trust proxy", true);
@@ -1973,14 +1976,16 @@ async function fetchDirectionsSummary(origin, place) {
   };
 }
 
-async function resolveOriginLocation(currentLocation) {
-  if (!currentLocation) return null;
+async function resolveOriginLocation(currentLocation, req) {
+  if (currentLocation) {
+    return {
+      source: "browser_geolocation",
+      location: currentLocation,
+      accuracyMeters: null,
+    };
+  }
 
-  return {
-    source: "browser_geolocation",
-    location: currentLocation,
-    accuracyMeters: null,
-  };
+  return resolveApproximateLocationFromRequest(req);
 }
 
 async function buildRecommendationsFromPlaces(
@@ -1991,9 +1996,7 @@ async function buildRecommendationsFromPlaces(
   const baseQuery = `${input}`.trim();
   const maxDistanceKm = parseMaxDistanceKm(preferences.maxDistanceKm);
   const openNowOnly = Boolean(options.openNowOnly);
-  const origin = await resolveOriginLocation(
-    parseCurrentLocation(options.currentLocation),
-  );
+  const origin = options.origin || null;
   const { queries, candidates } = await fetchCandidatePlaces(baseQuery, preferences, {
     originLocation: origin?.location || null,
     maxDistanceKm,
@@ -2882,6 +2885,7 @@ app.post("/recommend", optionalAuth, async (req, res) => {
     normalizePreferences(req.user?.preferences || defaultPreferences()),
     { hasCurrentLocation: Boolean(currentLocation) },
   );
+  const origin = await resolveOriginLocation(currentLocation, req);
   const personalizationText = buildPersonalizationText(preferences);
   const appliedPreferenceText = [personalizationText, openNowOnly ? "영업 중만 보기" : ""]
     .filter(Boolean)
@@ -2890,8 +2894,8 @@ app.post("/recommend", optionalAuth, async (req, res) => {
     ? `${input}. 개인화 조건: ${personalizationText}`
     : input;
 
-  const locationKey = currentLocation
-    ? `${currentLocation.lat.toFixed(3)},${currentLocation.lng.toFixed(3)}`
+  const locationKey = origin?.location
+    ? `${origin.source}:${origin.location.lat.toFixed(2)},${origin.location.lng.toFixed(2)}`
     : "no-location";
   const shouldBypassCache =
     Number(req.user?.preferenceSheetCount || 0) > 1 &&
@@ -2926,22 +2930,22 @@ app.post("/recommend", optionalAuth, async (req, res) => {
   try {
     const recommendationPayload = GOOGLE_MAPS_API_KEY
       ? await buildRecommendationsFromPlaces(input, preferences, {
-          currentLocation,
+          origin,
           openNowOnly,
         })
       : {
           items: await buildRecommendationsGemini(finalInput),
-          origin: null,
+          origin,
         };
     const items = recommendationPayload.items || [];
-    const origin = recommendationPayload.origin || null;
+    const responseOrigin = recommendationPayload.origin || null;
 
     if (cacheKey) {
       cache[cacheKey] = {
         items,
-        originLocation: origin?.location || null,
-        originSource: origin?.source || "",
-        originAccuracyMeters: origin?.accuracyMeters ?? null,
+        originLocation: responseOrigin?.location || null,
+        originSource: responseOrigin?.source || "",
+        originAccuracyMeters: responseOrigin?.accuracyMeters ?? null,
       };
     }
 
@@ -2963,9 +2967,9 @@ app.post("/recommend", optionalAuth, async (req, res) => {
     return res.json({
       items,
       personalizationApplied: appliedPreferenceText,
-      originLocation: origin?.location || null,
-      originSource: origin?.source || "",
-      originAccuracyMeters: origin?.accuracyMeters ?? null,
+      originLocation: responseOrigin?.location || null,
+      originSource: responseOrigin?.source || "",
+      originAccuracyMeters: responseOrigin?.accuracyMeters ?? null,
     });
   } catch (error) {
     console.error(error);

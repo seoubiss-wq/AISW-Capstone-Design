@@ -15,6 +15,7 @@
     "cors": "^2.8.5",
     "dotenv": "^16.4.0",
     "express": "^5.2.1",
+    "geoip-lite": "^1.4.10",
     "pg": "^8.20.0"
   },
   "devDependencies": {
