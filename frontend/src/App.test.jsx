@@ -199,3 +199,17 @@ test("adds the open-now filter only for AI recommendations", () => {
     currentLocation: { lat: 37.5665, lng: 126.978 },
   });
 });
+
+test("adds the bypass-cache flag for nearby recommendation requests", () => {
+  expect(
+    buildRecommendationRequestBody({
+      input: "\uB0B4 \uC8FC\uBCC0 \uB9DB\uC9D1 \uCD94\uCC9C",
+      currentLocation: { lat: 37.5665, lng: 126.978 },
+      targetView: "recommend",
+    }),
+  ).toEqual({
+    input: "\uB0B4 \uC8FC\uBCC0 \uB9DB\uC9D1 \uCD94\uCC9C",
+    currentLocation: { lat: 37.5665, lng: 126.978 },
+    bypassCache: true,
+  });
+});

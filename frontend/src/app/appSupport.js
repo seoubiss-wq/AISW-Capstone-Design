@@ -96,6 +96,7 @@ function buildRecommendationRequestBody({
   return {
     input,
     ...(currentLocation ? { currentLocation } : {}),
+    ...(isNearbyRecommendationSeed(input) ? { bypassCache: true } : {}),
     ...(targetView === "ai" && openNowOnly ? { openNowOnly: true } : {}),
   };
 }

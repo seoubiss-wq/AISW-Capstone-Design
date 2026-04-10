@@ -46,6 +46,10 @@ const {
 const {
   resolveApproximateLocationFromRequest,
 } = require("./scripts/shared/clientLocationFallback");
+const {
+  parseBypassCache,
+  shouldBypassRecommendationCache,
+} = require("./scripts/shared/recommendationCache");
 
 const app = express();
 app.set("trust proxy", true);
@@ -2865,6 +2869,7 @@ app.post("/recommend", optionalAuth, async (req, res) => {
   const input = typeof raw === "string" ? raw.trim() : "";
   const currentLocation = parseCurrentLocation(req.body?.currentLocation);
   const openNowOnly = parseOpenNowOnly(req.body?.openNowOnly);
+  const requestBypassCache = parseBypassCache(req.body?.bypassCache);
 
   if (!input) {
     return res.status(400).json({
@@ -2897,9 +2902,11 @@ app.post("/recommend", optionalAuth, async (req, res) => {
   const locationKey = origin?.location
     ? `${origin.source}:${origin.location.lat.toFixed(2)},${origin.location.lng.toFixed(2)}`
     : "no-location";
-  const shouldBypassCache =
-    Number(req.user?.preferenceSheetCount || 0) > 1 &&
-    Boolean(req.user?.activePreferenceSheetId);
+  const shouldBypassCache = shouldBypassRecommendationCache({
+    input,
+    requestBypassCache,
+    user: req.user,
+  });
   const cacheKey = shouldBypassCache
     ? null
     : `${RESPONSE_CACHE_VERSION}|${finalInput}|${locationKey}|open-now:${openNowOnly ? "1" : "0"}`;
