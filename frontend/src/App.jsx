@@ -23,6 +23,7 @@ import {
   ROUTE_MODE_OPTIONS,
   buildAppHistoryState,
   buildDetailConvenienceTags,
+  buildGeolocationErrorMessage,
   buildMessage,
   buildPreferredExternalMapLinks,
   buildRecommendationAssistantText,
@@ -50,6 +51,7 @@ import {
   readStoredDarkMode,
   readStoredLargeText,
   shouldUseOriginLocationAsCurrentLocation,
+  shouldRetryGeolocationRequest,
   shouldWaitForLocationBeforeRecommendation,
   splitTokens,
 } from "./app/appSupport";
@@ -69,6 +71,7 @@ const GoogleRouteMap = lazy(() => import("./GoogleRouteMap"));
 const MapDirectionsPage = lazy(() => import("./MapDirectionsPage"));
 
 export {
+  buildGeolocationErrorMessage,
   buildRecommendationAssistantText,
   buildRecommendationDecisionBrief,
   buildRecommendationRequestBody,
@@ -76,9 +79,33 @@ export {
   getRecommendationFeedbackState,
   getRecommendationOpenStatusLabel,
   isNearbyRecommendationSeed,
+  shouldRetryGeolocationRequest,
   shouldUseOriginLocationAsCurrentLocation,
   shouldWaitForLocationBeforeRecommendation,
 } from "./app/appSupport";
+
+const GEOLOCATION_REQUEST_OPTIONS = {
+  enableHighAccuracy: true,
+  timeout: 10000,
+  maximumAge: 300000,
+};
+
+const GEOLOCATION_RETRY_OPTIONS = {
+  enableHighAccuracy: false,
+  timeout: 15000,
+  maximumAge: 600000,
+};
+
+function readSecureContext() {
+  if (typeof window === "undefined") return true;
+  return window.isSecureContext !== false;
+}
+
+function readCurrentPosition(options) {
+  return new Promise((resolve, reject) => {
+    navigator.geolocation.getCurrentPosition(resolve, reject, options);
+  });
+}
 
 function MapPreviewFallback() {
   return (
@@ -522,7 +549,7 @@ export default function App() {
   const flatVisitEntries = useMemo(() => Object.values(visitEntries).flat(), [visitEntries]);
 
   const requestCurrentLocation = useCallback(() => {
-    if (!navigator.geolocation) {
+    if (typeof navigator === "undefined" || !navigator.geolocation) {
       setLocationStatus("현재 브라우저에서 위치 정보를 지원하지 않습니다.");
       return Promise.resolve(null);
     }
@@ -531,33 +558,49 @@ export default function App() {
       return Promise.resolve(currentLocation);
     }
 
+    const secureContext = readSecureContext();
+    if (!secureContext) {
+      setLocationStatus(buildGeolocationErrorMessage(null, { secureContext }));
+      return Promise.resolve(null);
+    }
+
     if (locationRequestPromiseRef.current) {
       return locationRequestPromiseRef.current;
     }
 
-    setLocationStatus("현재 위치를 확인하는 중입니다...");
-    locationRequestPromiseRef.current = new Promise((resolve) => {
-      navigator.geolocation.getCurrentPosition(
-        (position) => {
-          const next = {
-            lat: position.coords.latitude,
-            lng: position.coords.longitude,
-          };
-          setCurrentLocation(next);
-          setLocationStatus(`위치 확인 완료 · ${next.lat.toFixed(4)}, ${next.lng.toFixed(4)}`);
-          locationRequestPromiseRef.current = null;
-          resolve(next);
-        },
-        () => {
-          setLocationStatus(
-            "위치 권한이 없어 현재 위치를 확인하지 못했습니다. 브라우저 위치 권한을 허용해 주세요.",
-          );
-          locationRequestPromiseRef.current = null;
-          resolve(null);
-        },
-        { enableHighAccuracy: true, timeout: 10000, maximumAge: 300000 },
-      );
-    });
+    locationRequestPromiseRef.current = (async () => {
+      const applyResolvedPosition = (position) => {
+        const next = {
+          lat: position.coords.latitude,
+          lng: position.coords.longitude,
+        };
+        setCurrentLocation(next);
+        setLocationStatus(`위치 확인 완료 · ${next.lat.toFixed(4)}, ${next.lng.toFixed(4)}`);
+        return next;
+      };
+
+      try {
+        setLocationStatus("현재 위치를 확인하는 중입니다...");
+        const position = await readCurrentPosition(GEOLOCATION_REQUEST_OPTIONS);
+        return applyResolvedPosition(position);
+      } catch (error) {
+        if (shouldRetryGeolocationRequest(error)) {
+          try {
+            setLocationStatus("위치 확인이 지연되어 정확도를 낮춰 다시 시도하는 중입니다...");
+            const retryPosition = await readCurrentPosition(GEOLOCATION_RETRY_OPTIONS);
+            return applyResolvedPosition(retryPosition);
+          } catch (retryError) {
+            setLocationStatus(buildGeolocationErrorMessage(retryError, { secureContext }));
+            return null;
+          }
+        }
+
+        setLocationStatus(buildGeolocationErrorMessage(error, { secureContext }));
+        return null;
+      } finally {
+        locationRequestPromiseRef.current = null;
+      }
+    })();
 
     return locationRequestPromiseRef.current;
   }, [currentLocation]);

@@ -65,6 +65,28 @@ function shouldWaitForLocationBeforeRecommendation(currentLocation) {
   return !canUseMaxDistancePreference(currentLocation);
 }
 
+function shouldRetryGeolocationRequest(error) {
+  const errorCode = Number(error?.code);
+  return errorCode === 2 || errorCode === 3;
+}
+
+function buildGeolocationErrorMessage(error, { secureContext = true } = {}) {
+  if (!secureContext) {
+    return "보안 연결(HTTPS) 환경에서만 현재 위치를 확인할 수 있습니다.";
+  }
+
+  switch (Number(error?.code)) {
+    case 1:
+      return "위치 권한이 거부되어 현재 위치를 확인하지 못했습니다. 브라우저 위치 권한을 허용한 뒤 다시 시도해 주세요.";
+    case 2:
+      return "기기에서 현재 위치를 확인하지 못했습니다. GPS 또는 네트워크 상태를 확인한 뒤 다시 시도해 주세요.";
+    case 3:
+      return "위치 확인 시간이 초과되었습니다. 잠시 후 다시 시도해 주세요.";
+    default:
+      return "현재 위치를 확인하지 못했습니다. 잠시 후 다시 시도해 주세요.";
+  }
+}
+
 function buildRecommendationRequestBody({
   input,
   currentLocation,
@@ -513,6 +535,8 @@ export {
   isNearbyRecommendationSeed,
   canUseMaxDistancePreference,
   shouldWaitForLocationBeforeRecommendation,
+  shouldRetryGeolocationRequest,
+  buildGeolocationErrorMessage,
   buildRecommendationRequestBody,
   isMobileDeviceEnvironment,
   buildRecommendationAssistantText,

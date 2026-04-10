@@ -2,6 +2,7 @@ import { afterEach, expect, test, vi } from "vitest";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { render, screen, waitFor } from "@testing-library/react";
 import App, {
+  buildGeolocationErrorMessage,
   buildRecommendationRequestBody,
   buildRecommendationAssistantText,
   buildRecommendationDecisionBrief,
@@ -9,6 +10,7 @@ import App, {
   getRecommendationFeedbackState,
   getRecommendationOpenStatusLabel,
   isNearbyRecommendationSeed,
+  shouldRetryGeolocationRequest,
   shouldWaitForLocationBeforeRecommendation,
   shouldUseOriginLocationAsCurrentLocation,
 } from "./App";
@@ -157,6 +159,18 @@ test("waits for location resolution whenever coordinates are missing", () => {
   expect(
     shouldWaitForLocationBeforeRecommendation({ lat: 37.5665, lng: 126.978 }),
   ).toBe(false);
+});
+
+test("retries geolocation only for retryable browser errors", () => {
+  expect(shouldRetryGeolocationRequest({ code: 2 })).toBe(true);
+  expect(shouldRetryGeolocationRequest({ code: 3 })).toBe(true);
+  expect(shouldRetryGeolocationRequest({ code: 1 })).toBe(false);
+});
+
+test("builds location failure messages that distinguish timeout from permission errors", () => {
+  expect(buildGeolocationErrorMessage({ code: 1 })).toContain("권한");
+  expect(buildGeolocationErrorMessage({ code: 3 })).toContain("시간");
+  expect(buildGeolocationErrorMessage(null, { secureContext: false })).toContain("HTTPS");
 });
 
 test("adds the open-now filter only for AI recommendations", () => {
