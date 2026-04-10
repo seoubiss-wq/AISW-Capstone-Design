@@ -469,59 +469,6 @@ function formatDetailReview(review) {
   };
 }
 
-function uniqueCompact(values) {
-  return [...new Set((values || []).map((value) => String(value || "").trim()).filter(Boolean))];
-}
-
-function buildDetailConvenienceTags(placeDetails) {
-  return uniqueCompact([...(placeDetails?.services || []), ...(placeDetails?.amenities || [])]).slice(0, 10);
-}
-
-function inferDetailMoodTags(placeDetails, item) {
-  const sourceText = [
-    placeDetails?.summary,
-    item?.reason,
-    ...(item?.keywords || []),
-    ...(placeDetails?.reviews || []).map((review) => review.text),
-  ]
-    .filter(Boolean)
-    .join(" ")
-    .toLowerCase();
-
-  const tags = [];
-  if (/조용|quiet|차분|잔잔/.test(sourceText)) tags.push("조용한");
-  if (/아늑|cozy|포근|편안/.test(sourceText)) tags.push("아늑한");
-  if (/활기|lively|라이브|music|스포츠/.test(sourceText)) tags.push("활기찬");
-  if (/고급|premium|elegant|fine|격식/.test(sourceText)) tags.push("격식 있는");
-  if (/야외|테라스|outdoor|뷰|개방/.test(sourceText)) tags.push("개방감 있는");
-  if (!tags.length && placeDetails?.services?.includes("와인")) tags.push("격식 있는");
-  if (!tags.length && placeDetails?.services?.includes("맥주")) tags.push("캐주얼한");
-  if (!tags.length && item?.keywords?.length) tags.push(...item.keywords.slice(0, 2));
-  return uniqueCompact(tags).slice(0, 4);
-}
-
-function inferDetailAudienceTags(placeDetails, item) {
-  const sourceText = [
-    placeDetails?.summary,
-    item?.reason,
-    ...(item?.keywords || []),
-    ...(placeDetails?.reviews || []).map((review) => review.text),
-  ]
-    .filter(Boolean)
-    .join(" ")
-    .toLowerCase();
-
-  const tags = [];
-  if (/가족|아이|children|kid|유아/.test(sourceText)) tags.push("가족 방문");
-  if (/데이트|date|romantic|커플/.test(sourceText)) tags.push("데이트");
-  if (/모임|friends|group|회식|단체/.test(sourceText)) tags.push("모임");
-  if (/혼밥|solo|alone|single/.test(sourceText)) tags.push("혼밥");
-  if (/관광|tourist|여행/.test(sourceText)) tags.push("관광객");
-  if (!tags.length && placeDetails?.services?.includes("예약 가능")) tags.push("모임");
-  if (!tags.length && item?.keywords?.some((tag) => /조용|차분/.test(tag))) tags.push("대화 중심 방문");
-  return uniqueCompact(tags).slice(0, 4);
-}
-
 export {
   AUTH_SESSION_MARKER,
   DEFAULT_PREFERENCES,
@@ -564,9 +511,6 @@ export {
   formatPlaceDetailsPhone,
   formatPlaceDetailsWebsite,
   formatDetailReview,
-  buildDetailConvenienceTags,
-  inferDetailMoodTags,
-  inferDetailAudienceTags,
   NAV_ITEMS,
   NAV_ITEM_ICONS,
 };

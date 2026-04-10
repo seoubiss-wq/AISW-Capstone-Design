@@ -6,7 +6,6 @@ import {
   Footer,
   RecommendationEmptyState,
   RecommendationLoadingGrid,
-  RecommendationMapStatusCard,
   ResultCard,
   SavedCard,
   TopNav,
@@ -22,7 +21,6 @@ import {
   POPULAR_TAGS,
   ROUTE_MODE_OPTIONS,
   buildAppHistoryState,
-  buildDetailConvenienceTags,
   buildGeolocationErrorMessage,
   buildMessage,
   buildPreferredExternalMapLinks,
@@ -40,8 +38,6 @@ import {
   getRecommendationFeedbackState,
   getSpeechRecognitionCtor,
   getVisitBucket,
-  inferDetailAudienceTags,
-  inferDetailMoodTags,
   isAppHistoryState,
   isMobileDeviceEnvironment,
   isNearbyRecommendationSeed,
@@ -361,10 +357,6 @@ export default function App() {
     resultCount: items.length,
   });
   const maxDistanceEnabled = canUseMaxDistancePreference(currentLocation);
-  const activeRouteModeLabel = useMemo(
-    () => ROUTE_MODE_OPTIONS.find((option) => option.id === routeMode)?.label || "길찾기",
-    [routeMode],
-  );
   const routeBaseItem = items.length ? mapSelectedItem || selectedItem : null;
   const routeDistanceLabel =
     routeUi.distanceText ||
@@ -383,7 +375,6 @@ export default function App() {
     "선택한 식당 기준으로 경로를 안내합니다.";
 
   const routeSteps = Array.isArray(routeUi.steps) ? routeUi.steps : [];
-  const routePreviewSteps = routeSteps.slice(0, 3);
   const detailDirectionsUrl =
     detailViewItem?.links?.googleDirections ||
     placeDetails?.googleMapsUri ||
@@ -391,18 +382,6 @@ export default function App() {
     "";
   const detailPhone = formatPlaceDetailsPhone(placeDetails);
   const detailWebsiteLabel = formatPlaceDetailsWebsite(placeDetails?.websiteUri);
-  const detailConvenienceTags = useMemo(
-    () => buildDetailConvenienceTags(placeDetails),
-    [placeDetails],
-  );
-  const detailMoodTags = useMemo(
-    () => inferDetailMoodTags(placeDetails, detailViewItem),
-    [placeDetails, detailViewItem],
-  );
-  const detailAudienceTags = useMemo(
-    () => inferDetailAudienceTags(placeDetails, detailViewItem),
-    [placeDetails, detailViewItem],
-  );
   const detailReviews = useMemo(
     () =>
       placeDetails?.reviews?.length
@@ -2008,20 +1987,6 @@ export default function App() {
                       ))}
                     </div>
                   </div>
-                  {false && [].map((item) => (
-                    <button
-                      key={item.id}
-                      className="rounded-xl border border-outline-variant/20 bg-surface-container-lowest p-4 text-left transition-colors hover:bg-orange-50"
-                      type="button"
-                      onClick={() => runRecommendation(item.query, "ai")}
-                    >
-                      <span className="inline-flex rounded-full bg-primary/10 px-3 py-1 text-[11px] font-black uppercase tracking-[0.2em] text-primary">
-                        {item.kind === "recent" ? "최근 질문" : "인기 태그"}
-                      </span>
-                      <p className="mt-3 text-sm font-semibold text-on-surface">{item.title}</p>
-                      <span className="mt-2 block text-xs text-stone-500">{item.meta}</span>
-                    </button>
-                  ))}
                 </div>
                 <div className="mt-4 rounded-xl border border-primary/10 bg-primary/5 p-4">
                   <p className="mb-1 text-xs font-black uppercase tracking-wider text-primary">TastePick Premium</p>
@@ -2030,26 +1995,6 @@ export default function App() {
                   </p>
                 </div>
               </section>
-              {false ? (
-                <section className="rounded-xl bg-surface-container-low p-6">
-                  <h2 className="mb-4 text-lg font-bold text-on-surface-variant">최근 질문</h2>
-                  <div className="flex flex-col gap-3">
-                    {recentQuestions.map((entry) => (
-                      <button
-                        key={entry.id}
-                        className="rounded-lg bg-surface-container-lowest p-3 text-left transition-colors hover:bg-orange-50"
-                        type="button"
-                        onClick={() => runRecommendation(entry.query, "ai")}
-                      >
-                        <p className="text-sm font-semibold text-on-surface">{entry.query}</p>
-                        <span className="text-xs text-stone-500">
-                          {formatRelativeDate(entry.createdAt, "recently")}
-                        </span>
-                      </button>
-                    ))}
-                  </div>
-                </section>
-              ) : null}
               <section className="hidden">
                 <h2 className="mb-4 text-lg font-bold text-on-surface-variant">인기 태그</h2>
                 <div className="flex min-h-0 flex-1 flex-wrap content-start gap-2 overflow-y-auto pr-1">
@@ -2086,83 +2031,6 @@ export default function App() {
                       <span className="mr-2 text-xs font-medium text-stone-400">
                         {formatDate(entry.createdAt)}
                       </span>
-                      {false ? (
-                        <div>
-                          <p className="mb-3 text-sm font-black uppercase tracking-wide text-primary">편의 시설</p>
-                          <div className="flex flex-wrap gap-2">
-                            {detailConvenienceTags.map((tag) => (
-                              <span key={tag} className="rounded-full bg-white px-4 py-2 text-sm font-black text-on-surface">
-                                {tag}
-                              </span>
-                            ))}
-                          </div>
-                        </div>
-                      ) : null}
-
-                      {false ? (
-                        <div>
-                          <p className="mb-3 text-sm font-black uppercase tracking-wide text-primary">분위기</p>
-                          <div className="flex flex-wrap gap-2">
-                            {detailMoodTags.map((tag) => (
-                              <span key={tag} className="rounded-full bg-secondary-container px-4 py-2 text-sm font-black text-on-secondary-container">
-                                {tag}
-                              </span>
-                            ))}
-                          </div>
-                        </div>
-                      ) : null}
-
-                      {false ? (
-                        <div>
-                          <p className="mb-3 text-sm font-black uppercase tracking-wide text-primary">주요 방문자</p>
-                          <div className="flex flex-wrap gap-2">
-                            {detailAudienceTags.map((tag) => (
-                              <span key={tag} className="rounded-full bg-tertiary-container px-4 py-2 text-sm font-black text-on-tertiary-container">
-                                {tag}
-                              </span>
-                            ))}
-                          </div>
-                        </div>
-                      ) : null}
-
-                      {false ? (
-                        <div>
-                          <p className="mb-3 text-sm font-black uppercase tracking-wide text-primary">편의 시설</p>
-                          <div className="flex flex-wrap gap-2">
-                            {detailConvenienceTags.map((tag) => (
-                              <span key={tag} className="rounded-full bg-white px-4 py-2 text-sm font-black text-on-surface">
-                                {tag}
-                              </span>
-                            ))}
-                          </div>
-                        </div>
-                      ) : null}
-
-                      {false ? (
-                        <div>
-                          <p className="mb-3 text-sm font-black uppercase tracking-wide text-primary">분위기</p>
-                          <div className="flex flex-wrap gap-2">
-                            {detailMoodTags.map((tag) => (
-                              <span key={tag} className="rounded-full bg-secondary-container px-4 py-2 text-sm font-black text-on-secondary-container">
-                                {tag}
-                              </span>
-                            ))}
-                          </div>
-                        </div>
-                      ) : null}
-
-                      {false ? (
-                        <div>
-                          <p className="mb-3 text-sm font-black uppercase tracking-wide text-primary">주요 방문자</p>
-                          <div className="flex flex-wrap gap-2">
-                            {detailAudienceTags.map((tag) => (
-                              <span key={tag} className="rounded-full bg-tertiary-container px-4 py-2 text-sm font-black text-on-tertiary-container">
-                                {tag}
-                              </span>
-                            ))}
-                          </div>
-                        </div>
-                      ) : null}
                     </div>
                   ) : (
                     <div className={aiAssistantWrapperClassName} key={entry.id}>
@@ -2529,26 +2397,6 @@ export default function App() {
                           ) : null}
                         </div>
 
-                        {false ? (
-                        <div className="rounded-[1.25rem] bg-white p-5">
-                          <p className="mb-2 text-sm font-black uppercase tracking-wide text-primary">연락 및 링크</p>
-                          <div className="space-y-3 text-base font-semibold text-on-surface">
-                            {detailPhone ? <p>{detailPhone}</p> : <p>전화번호 정보 없음</p>}
-                            {placeDetails.websiteUri ? (
-                              <a
-                                className="block text-primary underline decoration-primary/30 underline-offset-4"
-                                href={placeDetails.websiteUri}
-                                rel="noreferrer"
-                                target="_blank"
-                              >
-                                {detailWebsiteLabel || placeDetails.websiteUri}
-                              </a>
-                            ) : (
-                              <p className="text-on-surface-variant">웹사이트 정보 없음</p>
-                            )}
-                          </div>
-                        </div>
-                        ) : null}
                       </div>
 
                       {placeDetails.services?.length ? (
@@ -2854,582 +2702,6 @@ export default function App() {
             routeUi={routeUi}
           />
         </Suspense>
-      ) : null}
-
-      {false ? (
-        <main className="page-fade h-[calc(100vh-5rem)] w-full pt-20">
-          <div className="route-canvas route-canvas--fullscreen relative h-full overflow-hidden">
-            {mapSelectedItem ? (
-              <Suspense fallback={null}>
-                <GoogleRouteMap
-                  currentLocation={currentLocation}
-                  item={mapSelectedItem}
-                  items={mapItems}
-                  onSelectItem={(itemId) => selectMapItem(itemId, "map")}
-                  selectionSource={mapSelectionSource}
-                  routeMode={routeMode}
-                  onRouteInfoChange={setRouteUi}
-                />
-              </Suspense>
-            ) : null}
-            <div className="route-canvas__veil" />
-            <button
-              className="absolute left-8 top-8 z-20 flex items-center gap-2 text-lg font-bold text-primary"
-              type="button"
-              onClick={() => setActiveView("recommend")}
-            >
-              <span className="material-symbols-outlined">arrow_back</span>
-              목록으로 돌아가기
-            </button>
-            <div className="hidden">
-              <div className="flex items-center gap-3">
-                <div className="flex h-12 w-12 items-center justify-center rounded-full bg-primary text-white">
-                  <span className="material-symbols-outlined">turn_right</span>
-                </div>
-                <div>
-                  <p className="text-sm font-black text-on-surface-variant">다음 안내</p>
-                  <p className="text-3xl font-black text-on-surface">300m 후 우회전</p>
-                </div>
-              </div>
-              <div className="mt-4 h-2 rounded-full bg-surface-container-high">
-                <div className="h-full w-2/3 rounded-full bg-primary" />
-              </div>
-            </div>
-
-            {mapSelectedItem ? (
-            <div className="hidden absolute right-8 top-8 z-20 w-[360px] max-w-[calc(100vw-4rem)] rounded-[1.5rem] bg-white p-6 shadow-lg">
-              <div className="flex items-center justify-between gap-4">
-                <div>
-                  <p className="text-sm font-black uppercase tracking-[0.18em] text-on-surface-variant">
-                    {activeRouteModeLabel}
-                  </p>
-                  <p className="mt-2 text-2xl font-black text-on-surface">
-                    {routeDurationLabel}
-                  </p>
-                </div>
-                <div className="flex h-12 w-12 items-center justify-center rounded-full bg-primary text-white">
-                  <span className="material-symbols-outlined">route</span>
-                </div>
-              </div>
-              <div className="mt-4 flex flex-wrap gap-2">
-                {ROUTE_MODE_OPTIONS.map((option) => {
-                  const isActive = routeMode === option.id;
-                  return (
-                    <button
-                      key={option.id}
-                      className={`rounded-full px-4 py-2 text-sm font-black transition ${
-                        isActive
-                          ? "bg-primary text-white"
-                          : "bg-surface-container-low text-on-surface"
-                      }`}
-                      type="button"
-                      onClick={() => {
-                        setRouteMode(option.id);
-                        setRouteUi((current) => ({
-                          ...current,
-                          mode: option.id,
-                          status: currentLocation ? "loading" : "idle",
-                          steps: [],
-                          message: currentLocation
-                            ? "경로를 다시 계산하는 중입니다."
-                            : "현재 위치를 허용하면 웹 안에서 경로를 표시합니다.",
-                        }));
-                      }}
-                    >
-                      {option.label}
-                    </button>
-                  );
-                })}
-              </div>
-              <div className="mt-5 rounded-[1.25rem] bg-surface-container-low p-4">
-                <p className="text-sm font-black text-on-surface-variant">
-                  {routeUi.distanceText
-                    ? `${routeUi.distanceText} · ${routeUi.durationText || "예상 시간 없음"}`
-                    : routeUi.status === "loading"
-                      ? "경로를 계산하는 중입니다."
-                      : "웹 안 길찾기 상태"}
-                </p>
-                <p className="mt-2 text-base font-medium leading-relaxed text-on-surface">
-                  {routeSummaryLabel}
-                </p>
-                {routePreviewSteps.length ? (
-                  <div className="mt-4 space-y-3">
-                    {routePreviewSteps.map((step, index) => (
-                      <div
-                        key={`preview-${step.id || `${step.instruction}-${index}`}`}
-                        className="rounded-[1rem] border border-white/80 bg-white/90 px-4 py-4 shadow-sm"
-                      >
-                        <div className="flex items-start gap-3">
-                          <span className="mt-0.5 flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-primary text-xs font-black text-white">
-                            {index + 1}
-                          </span>
-                          <div className="min-w-0 flex-1">
-                            <p className="text-sm font-semibold leading-relaxed text-on-surface">
-                              {step.instruction}
-                            </p>
-                            {step.transitLineLabel || step.transitHeadsign ? (
-                              <div className="mt-2 inline-flex max-w-full rounded-full bg-primary-container px-3 py-1 text-[11px] font-black text-on-primary-container">
-                                <span className="truncate">
-                                  {[
-                                    step.transitLineLabel ? `노선 ${step.transitLineLabel}` : "",
-                                    step.transitHeadsign ? `${step.transitHeadsign} 방면` : "",
-                                  ]
-                                    .filter(Boolean)
-                                    .join(" · ")}
-                                </span>
-                              </div>
-                            ) : null}
-                            {step.departureStopName || step.arrivalStopName || step.stopCountText ? (
-                              <div className="mt-2 rounded-[0.9rem] bg-surface-container-low px-3 py-2 text-xs font-bold leading-relaxed text-on-surface-variant">
-                                {[
-                                  step.departureStopName
-                                    ? `${step.departureStopName}${step.departureTimeText ? ` 승차 ${step.departureTimeText}` : " 승차"}`
-                                    : "",
-                                  step.arrivalStopName
-                                    ? `${step.arrivalStopName}${step.arrivalTimeText ? ` 하차 ${step.arrivalTimeText}` : " 하차"}`
-                                    : "",
-                                  step.stopCountText || "",
-                                ]
-                                  .filter(Boolean)
-                                  .join(" · ")}
-                              </div>
-                            ) : null}
-                            {step.distanceText || step.durationText ? (
-                              <div className="mt-2 flex flex-wrap gap-2">
-                                {step.distanceText ? (
-                                  <span className="rounded-full bg-surface-container-high px-2.5 py-1 text-[11px] font-black text-on-surface-variant">
-                                    {step.distanceText}
-                                  </span>
-                                ) : null}
-                                {step.durationText ? (
-                                  <span className="rounded-full bg-surface-container-high px-2.5 py-1 text-[11px] font-black text-on-surface-variant">
-                                    {step.durationText}
-                                  </span>
-                                ) : null}
-                              </div>
-                            ) : null}
-                          </div>
-                        </div>
-                      </div>
-                    ))}
-                  </div>
-                ) : null}
-                {false && routePreviewSteps.length ? (
-                  <div className="mt-4 space-y-2">
-                    {routePreviewSteps.map((step, index) => (
-                      <div
-                        key={step.id || `${step.instruction}-${index}`}
-                        className="rounded-[1rem] bg-white/80 px-3 py-3"
-                      >
-                        <div className="flex items-start gap-3">
-                          <span className="mt-0.5 flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-primary text-xs font-black text-white">
-                            {index + 1}
-                          </span>
-                          <div className="min-w-0 flex-1">
-                            <p className="text-sm font-semibold leading-relaxed text-on-surface">
-                              {step.instruction}
-                            </p>
-                            {false ? (
-                              <p className="mt-1 text-xs font-black text-primary">
-                                {[
-                                  step.transitLineLabel ? `노선 ${step.transitLineLabel}` : "",
-                                  step.transitHeadsign ? `${step.transitHeadsign} 방면` : "",
-                                ]
-                                  .filter(Boolean)
-                                  .join(" · ")}
-                              </p>
-                            ) : null}
-                            {false ? (
-                              <p className="mt-1 text-xs font-bold text-on-surface-variant">
-                                {[
-                                  step.departureStopName
-                                    ? `${step.departureStopName}${step.departureTimeText ? ` 승차 ${step.departureTimeText}` : " 승차"}`
-                                    : "",
-                                  step.arrivalStopName
-                                    ? `${step.arrivalStopName}${step.arrivalTimeText ? ` 하차 ${step.arrivalTimeText}` : " 하차"}`
-                                    : "",
-                                  step.stopCountText || "",
-                                ]
-                                  .filter(Boolean)
-                                  .join(" · ")}
-                              </p>
-                            ) : null}
-                            {step.transitLineLabel || step.transitHeadsign ? (
-                              <p className="mt-2 text-xs font-black text-primary">
-                                {[
-                                  step.transitLineLabel ? `노선 ${step.transitLineLabel}` : "",
-                                  step.transitHeadsign ? `${step.transitHeadsign} 방면` : "",
-                                ]
-                                  .filter(Boolean)
-                                  .join(" · ")}
-                              </p>
-                            ) : null}
-                            {step.departureStopName || step.arrivalStopName || step.stopCountText ? (
-                              <p className="mt-2 text-xs font-bold text-on-surface-variant">
-                                {[
-                                  step.departureStopName
-                                    ? `${step.departureStopName}${step.departureTimeText ? ` 승차 ${step.departureTimeText}` : " 승차"}`
-                                    : "",
-                                  step.arrivalStopName
-                                    ? `${step.arrivalStopName}${step.arrivalTimeText ? ` 하차 ${step.arrivalTimeText}` : " 하차"}`
-                                    : "",
-                                  step.stopCountText || "",
-                                ]
-                                  .filter(Boolean)
-                                  .join(" · ")}
-                              </p>
-                            ) : null}
-                            {step.transitLineLabel || step.transitHeadsign ? (
-                              <div className="mt-2 inline-flex max-w-full rounded-full bg-primary-container px-3 py-1 text-xs font-black text-on-primary-container">
-                                <span className="truncate">
-                                  {[
-                                    step.transitLineLabel ? `노선 ${step.transitLineLabel}` : "",
-                                    step.transitHeadsign ? `${step.transitHeadsign} 방면` : "",
-                                  ]
-                                    .filter(Boolean)
-                                    .join(" · ")}
-                                </span>
-                              </div>
-                            ) : null}
-                            {step.departureStopName || step.arrivalStopName || step.stopCountText ? (
-                              <div className="mt-2 rounded-[1rem] bg-white px-3 py-2 text-xs font-bold leading-relaxed text-on-surface-variant shadow-sm">
-                                {[
-                                  step.departureStopName
-                                    ? `${step.departureStopName}${step.departureTimeText ? ` 승차 ${step.departureTimeText}` : " 승차"}`
-                                    : "",
-                                  step.arrivalStopName
-                                    ? `${step.arrivalStopName}${step.arrivalTimeText ? ` 하차 ${step.arrivalTimeText}` : " 하차"}`
-                                    : "",
-                                  step.stopCountText || "",
-                                ]
-                                  .filter(Boolean)
-                                  .join(" · ")}
-                              </div>
-                            ) : null}
-                            {step.transitLineLabel || step.transitHeadsign ? (
-                              <div className="mt-2 inline-flex max-w-full rounded-full bg-primary-container px-3 py-1 text-xs font-black text-on-primary-container">
-                                <span className="truncate">
-                                  {[
-                                    step.transitLineLabel ? `노선 ${step.transitLineLabel}` : "",
-                                    step.transitHeadsign ? `${step.transitHeadsign} 방면` : "",
-                                  ]
-                                    .filter(Boolean)
-                                    .join(" · ")}
-                                </span>
-                              </div>
-                            ) : null}
-                            {step.departureStopName || step.arrivalStopName || step.stopCountText ? (
-                              <div className="mt-2 rounded-[1rem] bg-white px-3 py-2 text-xs font-bold leading-relaxed text-on-surface-variant shadow-sm">
-                                {[
-                                  step.departureStopName
-                                    ? `${step.departureStopName}${step.departureTimeText ? ` 승차 ${step.departureTimeText}` : " 승차"}`
-                                    : "",
-                                  step.arrivalStopName
-                                    ? `${step.arrivalStopName}${step.arrivalTimeText ? ` 하차 ${step.arrivalTimeText}` : " 하차"}`
-                                    : "",
-                                  step.stopCountText || "",
-                                ]
-                                  .filter(Boolean)
-                                  .join(" · ")}
-                              </div>
-                            ) : null}
-                            {step.transitLineLabel || step.transitHeadsign ? (
-                              <div className="mt-2 inline-flex max-w-full rounded-full bg-primary-container px-3 py-1 text-xs font-black text-on-primary-container">
-                                <span className="truncate">
-                                  {[
-                                    step.transitLineLabel ? `노선 ${step.transitLineLabel}` : "",
-                                    step.transitHeadsign ? `${step.transitHeadsign} 방면` : "",
-                                  ]
-                                    .filter(Boolean)
-                                    .join(" · ")}
-                                </span>
-                              </div>
-                            ) : null}
-                            {step.departureStopName || step.arrivalStopName || step.stopCountText ? (
-                              <div className="mt-2 rounded-[1rem] bg-white px-3 py-2 text-xs font-bold leading-relaxed text-on-surface-variant shadow-sm">
-                                {[
-                                  step.departureStopName
-                                    ? `${step.departureStopName}${step.departureTimeText ? ` 승차 ${step.departureTimeText}` : " 승차"}`
-                                    : "",
-                                  step.arrivalStopName
-                                    ? `${step.arrivalStopName}${step.arrivalTimeText ? ` 하차 ${step.arrivalTimeText}` : " 하차"}`
-                                    : "",
-                                  step.stopCountText || "",
-                                ]
-                                  .filter(Boolean)
-                                  .join(" · ")}
-                              </div>
-                            ) : null}
-                            {step.distanceText || step.durationText ? (
-                              <p className="mt-1 text-xs font-bold text-on-surface-variant">
-                                {[step.distanceText, step.durationText].filter(Boolean).join(" · ")}
-                              </p>
-                            ) : null}
-                          </div>
-                        </div>
-                      </div>
-                    ))}
-                  </div>
-                ) : null}
-              </div>
-            </div>
-            ) : recommendationFeedbackState === "loading" || recommendationFeedbackState === "empty" ? (
-            <RecommendationMapStatusCard loading={recommendationFeedbackState === "loading"} />
-            ) : null}
-
-            {mapSelectedItem ? (
-            <div className="route-panel-scroll absolute bottom-4 left-4 top-20 z-20 w-[400px] max-w-[calc(100vw-2rem)] overflow-y-auto rounded-[1.75rem] bg-white p-5 shadow-2xl ring-1 ring-black/5">
-              <div className="hidden overflow-hidden rounded-[1.75rem] bg-white shadow-sm">
-                <img alt={mapSelectedItem.name} className="h-64 w-full object-cover" src={mapSelectedItem.imageUrl} />
-              </div>
-              <div>
-                <p className="text-[11px] font-black uppercase tracking-[0.18em] text-on-surface-variant">
-                  Directions
-                </p>
-                <h1 className="mt-3 text-[1.75rem] font-black leading-tight text-on-surface">
-                  {mapSelectedItem.name}
-                </h1>
-                <p className="mt-2 text-sm font-semibold text-on-surface-variant">
-                  {mapSelectedItem.category} · {activeRouteModeLabel} 경로
-                </p>
-              </div>
-
-              <div className="mt-4 flex flex-wrap gap-2">
-                {ROUTE_MODE_OPTIONS.map((option) => {
-                  const isActive = routeMode === option.id;
-                  return (
-                    <button
-                      key={`panel-route-${option.id}`}
-                      className={`rounded-full px-4 py-2 text-sm font-black transition ${
-                        isActive
-                          ? "bg-primary text-white"
-                          : "bg-surface-container-low text-on-surface"
-                      }`}
-                      type="button"
-                      onClick={() => {
-                        setRouteMode(option.id);
-                        setRouteUi((current) => ({
-                          ...current,
-                          mode: option.id,
-                          status: currentLocation ? "loading" : "idle",
-                          steps: [],
-                          message: currentLocation
-                            ? "경로를 다시 계산하는 중입니다."
-                            : "현재 위치를 허용하면 지도 위에 경로를 표시합니다.",
-                        }));
-                      }}
-                    >
-                      {option.label}
-                    </button>
-                  );
-                })}
-              </div>
-
-              <div className="mt-5 grid grid-cols-2 gap-3">
-                <div className="rounded-[1.25rem] bg-surface-container-low p-4">
-                  <p className="text-sm font-black uppercase text-on-surface-variant">남은 거리</p>
-                  <p className="mt-2 text-[1.7rem] font-black text-on-surface">
-                    {routeDistanceLabel || "거리 계산 대기"}
-                  </p>
-                </div>
-                <div className="rounded-[1.25rem] bg-surface-container-low p-4">
-                  <p className="text-sm font-black uppercase text-on-surface-variant">예상 시간</p>
-                  <p className="mt-2 text-[1.7rem] font-black text-on-surface">{routeDurationLabel}</p>
-                </div>
-              </div>
-
-              <div className="mt-5 rounded-[1.25rem] bg-surface-container-low p-4">
-                <p className="text-sm font-black uppercase text-on-surface-variant">경로 안내</p>
-                <p className="mt-3 text-base font-medium leading-relaxed text-on-surface">
-                  {routeSummaryLabel}
-                </p>
-              </div>
-
-              <div className="mt-5 rounded-[1.25rem] bg-surface-container-low p-4">
-                <div className="flex items-center justify-between gap-3">
-                  <p className="text-xs font-black uppercase tracking-[0.12em] text-on-surface-variant">Step by step</p>
-                  {routeSteps.length ? (
-                    <span className="rounded-full bg-white px-3 py-1 text-xs font-black text-on-surface-variant shadow-sm">
-                      {routeSteps.length} steps
-                    </span>
-                  ) : null}
-                </div>
-                {routeSteps.length ? (
-                  <div className="mt-4 space-y-3">
-                    {routeSteps.map((step, index) => (
-                      <div
-                        key={`detail-${step.id || `${step.instruction}-${index}`}`}
-                        className="rounded-[1.25rem] border border-transparent bg-surface-container-low px-4 py-4 shadow-sm"
-                      >
-                        <div className="flex items-start gap-3">
-                          <span className="mt-0.5 flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-primary text-xs font-black text-white">
-                            {index + 1}
-                          </span>
-                          <div className="min-w-0 flex-1">
-                            <p className="text-sm font-semibold leading-relaxed text-on-surface">
-                              {step.instruction}
-                            </p>
-                            {step.transitLineLabel || step.transitHeadsign ? (
-                              <div className="mt-2 inline-flex max-w-full rounded-full bg-primary-container px-3 py-1 text-xs font-black text-on-primary-container">
-                                <span className="truncate">
-                                  {[
-                                    step.transitLineLabel ? `노선 ${step.transitLineLabel}` : "",
-                                    step.transitHeadsign ? `${step.transitHeadsign} 방면` : "",
-                                  ]
-                                    .filter(Boolean)
-                                    .join(" · ")}
-                                </span>
-                              </div>
-                            ) : null}
-                            {step.departureStopName || step.arrivalStopName || step.stopCountText ? (
-                              <div className="mt-2 rounded-[1rem] bg-white px-3 py-2 text-xs font-bold leading-relaxed text-on-surface-variant shadow-sm">
-                                {[
-                                  step.departureStopName
-                                    ? `${step.departureStopName}${step.departureTimeText ? ` 승차 ${step.departureTimeText}` : " 승차"}`
-                                    : "",
-                                  step.arrivalStopName
-                                    ? `${step.arrivalStopName}${step.arrivalTimeText ? ` 하차 ${step.arrivalTimeText}` : " 하차"}`
-                                    : "",
-                                  step.stopCountText || "",
-                                ]
-                                  .filter(Boolean)
-                                  .join(" · ")}
-                              </div>
-                            ) : null}
-                            {step.distanceText || step.durationText ? (
-                              <div className="mt-3 flex flex-wrap gap-2">
-                                {step.distanceText ? (
-                                  <span className="rounded-full bg-white px-2.5 py-1 text-[11px] font-black text-on-surface-variant shadow-sm">
-                                    {step.distanceText}
-                                  </span>
-                                ) : null}
-                                {step.durationText ? (
-                                  <span className="rounded-full bg-white px-2.5 py-1 text-[11px] font-black text-on-surface-variant shadow-sm">
-                                    {step.durationText}
-                                  </span>
-                                ) : null}
-                              </div>
-                            ) : null}
-                          </div>
-                        </div>
-                      </div>
-                    ))}
-                  </div>
-                ) : null}
-                {false && routeSteps.length ? (
-                  <div className="mt-4 space-y-3">
-                    {routeSteps.map((step, index) => (
-                      <div
-                        key={step.id || `${step.instruction}-${index}`}
-                        className="rounded-[1.25rem] bg-surface-container-low px-4 py-4"
-                      >
-                        <div className="flex items-start gap-3">
-                          <span className="mt-0.5 flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-primary text-xs font-black text-white">
-                            {index + 1}
-                          </span>
-                          <div className="min-w-0 flex-1">
-                            <p className="text-sm font-semibold leading-relaxed text-on-surface">
-                              {step.instruction}
-                            </p>
-                            {step.distanceText || step.durationText ? (
-                              <p className="mt-2 text-xs font-bold text-on-surface-variant">
-                                {[step.distanceText, step.durationText].filter(Boolean).join(" · ")}
-                              </p>
-                            ) : null}
-                          </div>
-                        </div>
-                      </div>
-                    ))}
-                  </div>
-                ) : (
-                  <p className="mt-3 text-base font-medium leading-relaxed text-on-surface">
-                    {routeSummaryLabel}
-                  </p>
-                )}
-              </div>
-
-              <div className="mt-8 rounded-[1.5rem] bg-white p-5 shadow-sm">
-                <p className="text-sm font-black uppercase text-on-surface-variant">Other picks</p>
-                <div className="mt-4 flex flex-wrap gap-3">
-                  {mapItems.map((mapItem) => {
-                    const isActive = mapItem.id === mapSelectedItem.id;
-                    return (
-                      <button
-                        key={mapItem.id}
-                        className={`rounded-full border px-4 py-2 text-sm font-bold transition ${
-                          isActive
-                            ? "border-primary bg-primary text-white"
-                            : "border-outline-variant bg-surface-container-low text-on-surface"
-                        }`}
-                        type="button"
-                        onClick={() => selectMapItem(mapItem.id, "panel")}
-                      >
-                        {mapItem.name}
-                      </button>
-                    );
-                  })}
-                </div>
-              </div>
-
-              <div className="mt-8 space-y-5">
-                <div className="flex gap-4">
-                  <div className="flex h-12 w-12 items-center justify-center rounded-full bg-secondary-container text-primary">
-                    <span className="material-symbols-outlined filled-icon">location_on</span>
-                  </div>
-                  <div>
-                    <p className="font-black text-on-surface">현재 위치</p>
-                    <p className="text-lg font-medium text-on-surface-variant">
-                      {currentLocation
-                        ? `${currentLocation.lat.toFixed(4)}, ${currentLocation.lng.toFixed(4)}`
-                        : "현재 위치 미설정"}
-                    </p>
-                  </div>
-                </div>
-                <div className="flex gap-4">
-                  <div className="flex h-12 w-12 items-center justify-center rounded-full bg-primary-container text-on-primary-container">
-                    <span className="material-symbols-outlined filled-icon">restaurant</span>
-                  </div>
-                  <div>
-                    <p className="font-black text-on-surface">목적지</p>
-                    <p className="text-lg font-medium text-on-surface-variant">{mapSelectedItem.name}</p>
-                  </div>
-                </div>
-                <button
-                  className="rounded-[1.25rem] bg-primary px-5 py-4 text-lg font-black text-white"
-                  type="button"
-                  onClick={() => openExternal(mapSelectedItem.links.googleDirections || mapSelectedItem.links.googleMap)}
-                >
-                  구글 길찾기 열기
-                </button>
-                <button
-                  className="rounded-[1.25rem] bg-secondary-container px-5 py-4 text-lg font-black text-on-secondary-container"
-                  type="button"
-                  onClick={requestCurrentLocation}
-                >
-                  현재 위치 새로고침
-                </button>
-                <p className="text-base font-medium text-on-surface-variant">{locationStatus}</p>
-              </div>
-            </div>
-            ) : (
-            <div className="absolute bottom-8 left-8 top-28 z-20 flex w-[360px] max-w-[calc(100vw-4rem)] items-center">
-              <div className="rounded-[1.75rem] bg-white p-8 shadow-sm">
-                <p className="text-2xl font-black text-on-surface">주변 맛집을 찾고 있습니다.</p>
-                <p className="mt-3 text-base font-medium leading-relaxed text-on-surface-variant">
-                  지도 기록이 없어도 현재 위치 기준 추천을 자동으로 불러옵니다.
-                </p>
-                <button
-                  className="mt-6 rounded-[1.25rem] bg-primary px-5 py-4 text-lg font-black text-white"
-                  type="button"
-                  onClick={() => runRecommendation(query || "내 주변 맛집 추천", "map", { skipChat: true })}
-                >
-                  주변 맛집 다시 찾기
-                </button>
-              </div>
-            </div>
-            )}
-          </div>
-        </main>
       ) : null}
 
       {activeView === "mypage" ? (
@@ -3841,15 +3113,6 @@ export default function App() {
                               길찾기
                             </button>
                           </div>
-                          {false ? (
-                            <button
-                              className="mt-4 rounded-[1.25rem] bg-error-container px-4 py-4 text-base font-black text-on-error-container"
-                              type="button"
-                              onClick={() => removeHistoryEntry(entry.id)}
-                            >
-                              기록 삭제
-                            </button>
-                          ) : null}
                         </div>
                       </div>
                     </article>
