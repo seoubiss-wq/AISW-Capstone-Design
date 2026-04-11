@@ -72,6 +72,12 @@ This repo also includes:
 Recommended default for this model-serving app is `1` worker with a few threads, because each Gunicorn worker loads its own embedding and reranker models.
 Gunicorn is for Unix/Linux deployment. On local Windows development, keep using `python app.py`.
 
+Windows local WSGI start:
+
+```powershell
+waitress-serve --listen=127.0.0.1:8001 app:app
+```
+
 ## 4) APIs
 
 Health:
