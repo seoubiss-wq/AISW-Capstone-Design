@@ -68,6 +68,14 @@ const MODEL = process.env.GEMINI_MODEL || "gemini-3-flash-preview";
 const UNSPLASH_ACCESS_KEY = process.env.UNSPLASH_ACCESS_KEY?.trim();
 const GOOGLE_MAPS_API_KEY = process.env.GOOGLE_MAPS_API_KEY?.trim();
 const DATABASE_URL = readScopedEnv("DATABASE_URL");
+const AI_SERVER_URL = (
+  readScopedEnv("AI_SERVER_URL") ||
+  String(process.env.AI_SERVER_URL || "")
+).trim().replace(/\/$/, "");
+const AI_SERVER_TIMEOUT_MS = Math.min(
+  60000,
+  Math.max(1000, Number.parseInt(process.env.AI_SERVER_TIMEOUT_MS || "8000", 10) || 8000),
+);
 const SUPABASE_URL = readScopedEnv("SUPABASE_URL");
 const SUPABASE_PUBLISHABLE_KEY = readScopedEnv("SUPABASE_PUBLISHABLE_KEY");
 const DEV_SUPABASE_URL = String(process.env.DEV_SUPABASE_URL || "").trim();
@@ -1515,6 +1523,153 @@ function normalizeHttpUrl(maybe) {
   }
 }
 
+function buildAiSearchQuery(input, preferences = defaultPreferences()) {
+  return [
+    String(input || "").trim(),
+    String(preferences?.favoriteCuisine || "").trim(),
+    String(preferences?.mood || "").trim(),
+  ]
+    .filter(Boolean)
+    .join(" ")
+    .slice(0, 300);
+}
+
+function buildAiSearchFilters(preferences = defaultPreferences(), options = {}) {
+  const filters = {};
+  if (options.openNowOnly) {
+    filters.open_only = true;
+  }
+
+  const favoriteCuisine = String(preferences?.favoriteCuisine || "").trim();
+  if (favoriteCuisine) {
+    filters.business_type = favoriteCuisine;
+  }
+
+  return filters;
+}
+
+function buildAiRecommendationReason(item, options = {}) {
+  const parts = [];
+  const businessType = String(item?.business_type || "").trim();
+  const address = String(item?.address || "").trim();
+  const status = String(item?.status || "").trim();
+
+  if (businessType) {
+    parts.push(businessType);
+  }
+  if (options.openNowOnly) {
+    parts.push("폐업 제외 필터 반영");
+  }
+  if (address) {
+    parts.push(address);
+  }
+  if (status && !/정상|영업/i.test(status)) {
+    parts.push(status);
+  }
+
+  return parts.join(" | ") || "AI 검색 기반 추천";
+}
+
+function mapAiSearchItemToRecommendation(item, index, options = {}) {
+  const name = String(item?.name || "").trim() || `추천 ${index + 1}`;
+  const address = String(item?.address || "").trim();
+  const homepageUrl = normalizeHttpUrl(item?.homepage_url);
+  const maps = buildPlaceLinks(name, { address });
+
+  return {
+    id: crypto.randomUUID(),
+    name,
+    placeId: "",
+    reason: buildAiRecommendationReason(item, options),
+    address,
+    imageUrl: ensureImageUrl(null, index),
+    source: "ai_search",
+    location: null,
+    links: {
+      naverMap: maps.naverMapUrl,
+      kakaoMap: maps.kakaoMapUrl,
+      googleMap: buildGoogleMapUrl(name, { address }),
+      ...(homepageUrl ? { website: homepageUrl } : {}),
+    },
+    distanceKm: null,
+    travelDuration: "",
+    routeSummary: "",
+    openNow: null,
+    businessStatus: String(item?.status || "").trim(),
+    originSource: options.origin?.source || "",
+    category: String(item?.business_type || "").trim(),
+    phoneNumber: String(item?.phone_number || "").trim(),
+    scores: item?.scores && typeof item.scores === "object" ? item.scores : null,
+  };
+}
+
+async function tryBuildRecommendationsFromAiServer(
+  input,
+  preferences = defaultPreferences(),
+  options = {},
+) {
+  if (!AI_SERVER_URL) {
+    return { ok: false, skipped: true, error: null, payload: null };
+  }
+
+  const query = buildAiSearchQuery(input, preferences);
+  if (!query) {
+    return {
+      ok: true,
+      skipped: false,
+      error: null,
+      payload: { items: [], origin: options.origin || null },
+    };
+  }
+
+  const controller = new AbortController();
+  const timeoutId = setTimeout(() => controller.abort(), AI_SERVER_TIMEOUT_MS);
+
+  try {
+    const response = await fetch(`${AI_SERVER_URL}/ai/search`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        query,
+        top_k: 6,
+        filters: buildAiSearchFilters(preferences, options),
+      }),
+      signal: controller.signal,
+    });
+
+    const payload = await response.json().catch(() => null);
+    if (!response.ok) {
+      throw new Error(payload?.error || `AI server HTTP ${response.status}`);
+    }
+
+    const items = Array.isArray(payload?.items)
+      ? payload.items.slice(0, 3).map((item, index) =>
+          mapAiSearchItemToRecommendation(item, index, options),
+        )
+      : [];
+
+    return {
+      ok: true,
+      skipped: false,
+      error: null,
+      payload: {
+        items,
+        origin: options.origin || null,
+        meta: payload?.meta || null,
+      },
+    };
+  } catch (error) {
+    return {
+      ok: false,
+      skipped: false,
+      error,
+      payload: null,
+    };
+  } finally {
+    clearTimeout(timeoutId);
+  }
+}
+
 function parseItemsFromText(text) {
   const trimmed = text.trim();
   const start = trimmed.indexOf("{");
@@ -2878,11 +3033,11 @@ app.post("/recommend", optionalAuth, async (req, res) => {
     });
   }
 
-  if (!GOOGLE_MAPS_API_KEY && !API_KEY?.trim()) {
+  if (!AI_SERVER_URL && !GOOGLE_MAPS_API_KEY && !API_KEY?.trim()) {
     return res.status(500).json({
       items: null,
       error:
-        "backend/.env 에 GOOGLE_MAPS_API_KEY 또는 GEMINI_API_KEY를 설정해 주세요.",
+        "backend/.env 에 AI_SERVER_URL, GOOGLE_MAPS_API_KEY 또는 GEMINI_API_KEY를 설정해 주세요.",
     });
   }
 
@@ -2935,15 +3090,28 @@ app.post("/recommend", optionalAuth, async (req, res) => {
   }
 
   try {
-    const recommendationPayload = GOOGLE_MAPS_API_KEY
-      ? await buildRecommendationsFromPlaces(input, preferences, {
-          origin,
-          openNowOnly,
-        })
-      : {
-          items: await buildRecommendationsGemini(finalInput),
-          origin,
-        };
+    const aiAttempt = await tryBuildRecommendationsFromAiServer(input, preferences, {
+      origin,
+      openNowOnly,
+    });
+    if (aiAttempt.error) {
+      console.warn("AI recommendation server fallback:", aiAttempt.error?.message || aiAttempt.error);
+    }
+
+    let recommendationPayload = aiAttempt.ok ? aiAttempt.payload : null;
+    if (!recommendationPayload?.items?.length) {
+      recommendationPayload = GOOGLE_MAPS_API_KEY
+        ? await buildRecommendationsFromPlaces(input, preferences, {
+            origin,
+            openNowOnly,
+          })
+        : API_KEY?.trim()
+          ? {
+              items: await buildRecommendationsGemini(finalInput),
+              origin,
+            }
+          : recommendationPayload || { items: [], origin };
+    }
     const items = recommendationPayload.items || [];
     const responseOrigin = recommendationPayload.origin || null;
 

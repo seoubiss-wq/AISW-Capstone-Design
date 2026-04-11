@@ -1,4 +1,15 @@
-const geoip = require("geoip-lite");
+let geoipLookup = () => null;
+
+try {
+  const geoip = require("geoip-lite");
+  if (typeof geoip?.lookup === "function") {
+    geoipLookup = geoip.lookup.bind(geoip);
+  }
+} catch (error) {
+  if (error?.code !== "MODULE_NOT_FOUND") {
+    throw error;
+  }
+}
 
 function normalizeIpAddress(value) {
   const raw = Array.isArray(value) ? value[0] : value;
@@ -37,7 +48,7 @@ function readClientIp(req) {
   );
 }
 
-function resolveApproximateLocationFromRequest(req, lookup = geoip.lookup) {
+function resolveApproximateLocationFromRequest(req, lookup = geoipLookup) {
   const clientIp = readClientIp(req);
   if (!clientIp || isPrivateOrLocalIpAddress(clientIp)) {
     return null;
