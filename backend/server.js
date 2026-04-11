@@ -53,6 +53,9 @@ const {
   parseBypassCache,
   shouldBypassRecommendationCache,
 } = require("./scripts/shared/recommendationCache");
+const {
+  extractPlaceMenus,
+} = require("./scripts/shared/placeMenus");
 
 const app = express();
 app.set("trust proxy", true);
@@ -1290,7 +1293,7 @@ function normalizeLegacyPlaceDetails(place) {
         .filter((review) => review.text || review.rating != null)
     : [];
 
-  return {
+  const normalized = {
     placeId: String(place.place_id || "").trim(),
     name: String(place.name || "").trim(),
     address: String(place.formatted_address || "").trim(),
@@ -1315,6 +1318,9 @@ function normalizeLegacyPlaceDetails(place) {
     amenities,
     reviews,
   };
+
+  normalized.menus = extractPlaceMenus(normalized);
+  return normalized;
 }
 
 function normalizeCachedReview(raw, index, placeId) {
@@ -1335,7 +1341,7 @@ function normalizeCachedReview(raw, index, placeId) {
 
 function mapCachedPlaceDetailsRow(row) {
   const amenityGroups = parseJsonObject(row.amenities);
-  return {
+  const mapped = {
     placeId: String(row.place_id || "").trim(),
     name: String(row.name || "").trim(),
     address: String(row.formatted_address || "").trim(),
@@ -1357,6 +1363,9 @@ function mapCachedPlaceDetailsRow(row) {
       .map((review, index) => normalizeCachedReview(review, index, row.place_id))
       .filter((review) => review.text || review.rating != null),
   };
+
+  mapped.menus = extractPlaceMenus(mapped);
+  return mapped;
 }
 
 async function getCachedPlaceDetails(placeId) {

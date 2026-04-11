@@ -15,7 +15,6 @@ import {
   DEFAULT_PREFERENCES,
   DEFAULT_ROUTE_UI,
   DEMO_ITEMS,
-  DEMO_MENUS,
   DIETARY_OPTIONS,
   FOLLOW_UP_CHIPS,
   POPULAR_TAGS,
@@ -382,6 +381,13 @@ export default function App() {
     "";
   const detailPhone = formatPlaceDetailsPhone(placeDetails);
   const detailWebsiteLabel = formatPlaceDetailsWebsite(placeDetails?.websiteUri);
+  const detailMenus = useMemo(
+    () =>
+      Array.isArray(placeDetails?.menus)
+        ? placeDetails.menus.filter((menu) => menu?.name)
+        : [],
+    [placeDetails],
+  );
   const detailReviews = useMemo(
     () =>
       placeDetails?.reviews?.length
@@ -2434,25 +2440,34 @@ export default function App() {
 
                 <section className="mt-12">
                   <div className="mb-6 flex items-center justify-between">
-                    <h3 className="font-headline text-3xl font-black">시그니처 메뉴</h3>
-                    <button className="font-bold text-primary" type="button">
-                      전체 메뉴 보기
-                    </button>
+                    <div>
+                      <h3 className="font-headline text-3xl font-black">실제 메뉴</h3>
+                      <p className="mt-1 text-sm font-semibold text-on-surface-variant">
+                        Google 식당 설명과 리뷰에서 확인된 메뉴입니다.
+                      </p>
+                    </div>
                   </div>
-                  <div className="grid gap-6 md:grid-cols-2">
-                    {DEMO_MENUS.map((menu) => (
-                      <article key={menu.id} className="overflow-hidden rounded-[1.75rem] bg-surface-container-low">
-                        <img alt={menu.name} className="h-52 w-full object-cover" src={menu.imageUrl} />
-                        <div className="p-5">
-                          <div className="mb-2 flex items-center justify-between">
+                  {detailMenus.length ? (
+                    <div className="grid gap-6 md:grid-cols-2">
+                      {detailMenus.map((menu) => (
+                        <article key={menu.id} className="rounded-[1.75rem] bg-surface-container-low p-5">
+                          <div className="mb-3 flex items-start justify-between gap-4">
                             <h4 className="text-xl font-black">{menu.name}</h4>
-                            <span className="font-black text-primary">{menu.price}</span>
+                            <span className="shrink-0 rounded-full bg-primary/10 px-3 py-1 text-sm font-black text-primary">
+                              {menu.mentionCount > 1 ? `${menu.mentionCount}회 언급` : "메뉴 확인"}
+                            </span>
                           </div>
-                          <p className="text-base font-medium text-on-surface-variant">{menu.description}</p>
-                        </div>
-                      </article>
-                    ))}
-                  </div>
+                          <p className="text-base font-medium leading-relaxed text-on-surface-variant">
+                            {menu.description || "리뷰에서 확인된 대표 메뉴입니다."}
+                          </p>
+                        </article>
+                      ))}
+                    </div>
+                  ) : (
+                    <div className="rounded-[1.25rem] bg-white px-5 py-4 text-base font-semibold text-on-surface-variant">
+                      아직 이 식당의 메뉴 정보가 수집되지 않았습니다.
+                    </div>
+                  )}
                 </section>
                 <section className="mt-12 rounded-[1.75rem] bg-surface-container-low p-6">
                   <div className="mb-4 flex items-center justify-between">

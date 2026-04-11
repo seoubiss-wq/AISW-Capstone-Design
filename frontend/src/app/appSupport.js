@@ -270,25 +270,6 @@ const DEMO_ITEMS = [
   },
 ];
 
-const DEMO_MENUS = [
-  {
-    id: "menu-1",
-    name: "슬로우 브레이즈 양갈비",
-    price: "$34",
-    description: "부드럽게 익힌 메인 디시와 허브 소스의 조합",
-    imageUrl:
-      "https://images.unsplash.com/photo-1544025162-d76694265947?auto=format&fit=crop&w=1200&q=80",
-  },
-  {
-    id: "menu-2",
-    name: "자연산 농어 스테이크",
-    price: "$28",
-    description: "레몬 버터와 제철 채소를 곁들인 가벼운 생선 요리",
-    imageUrl:
-      "https://images.unsplash.com/photo-1559847844-5315695dadae?auto=format&fit=crop&w=1200&q=80",
-  },
-];
-
 function resolveMediaUrl(url) {
   return resolveApiUrl(url);
 }
@@ -485,7 +466,6 @@ export {
   FOLLOW_UP_CHIPS,
   POPULAR_TAGS,
   DEMO_ITEMS,
-  DEMO_MENUS,
   shouldUseOriginLocationAsCurrentLocation,
   isNearbyRecommendationSeed,
   canUseMaxDistancePreference,
