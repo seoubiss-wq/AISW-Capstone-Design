@@ -12,6 +12,8 @@ const {
 } = require("./scripts/shared/recommendationPreferences");
 const {
   buildNearbyRadiusMeters,
+  compareRankedPlaces,
+  resolveNearbySearchMaxDistanceKm,
   shouldUseNearbyCandidateSearch,
 } = require("./scripts/shared/placesSearchStrategy");
 const {
@@ -47,6 +49,7 @@ const {
   resolveApproximateLocationFromRequest,
 } = require("./scripts/shared/clientLocationFallback");
 const {
+  isNearbyRecommendationSeed,
   parseBypassCache,
   shouldBypassRecommendationCache,
 } = require("./scripts/shared/recommendationCache");
@@ -2153,14 +2156,23 @@ async function buildRecommendationsFromPlaces(
   options = {},
 ) {
   const baseQuery = `${input}`.trim();
-  const maxDistanceKm = parseMaxDistanceKm(preferences.maxDistanceKm);
-  const openNowOnly = Boolean(options.openNowOnly);
   const origin = options.origin || null;
+  const nearbyRequested = isNearbyRecommendationSeed(baseQuery);
+  const maxDistanceKm = resolveNearbySearchMaxDistanceKm({
+    hasOriginLocation: Boolean(origin?.location),
+    nearbyRequested,
+    requestedMaxDistanceKm: parseMaxDistanceKm(preferences.maxDistanceKm),
+    originAccuracyMeters: origin?.accuracyMeters ?? null,
+  });
+  const openNowOnly = Boolean(options.openNowOnly);
   const { queries, candidates } = await fetchCandidatePlaces(baseQuery, preferences, {
     originLocation: origin?.location || null,
     maxDistanceKm,
   });
-  const searchCenter = maxDistanceKm && !origin?.location ? await geocodeSearchCenter(baseQuery) : null;
+  const searchCenter =
+    maxDistanceKm && !origin?.location && !nearbyRequested
+      ? await geocodeSearchCenter(baseQuery)
+      : null;
   const candidatePlaces = candidates.map((entry) => entry.place);
   const matrix = origin?.location
     ? await fetchDistanceMatrix(origin.location, candidatePlaces)
@@ -2250,16 +2262,7 @@ async function buildRecommendationsFromPlaces(
       };
     })
     .sort((left, right) => {
-      if (right.preferenceScore !== left.preferenceScore) {
-        return right.preferenceScore - left.preferenceScore;
-      }
-      if (left.distanceKm == null && right.distanceKm == null) return 0;
-      if (left.distanceKm == null) return 1;
-      if (right.distanceKm == null) return -1;
-      if (left.distanceKm !== right.distanceKm) {
-        return left.distanceKm - right.distanceKm;
-      }
-      return left.queryIndex - right.queryIndex;
+      return compareRankedPlaces(left, right, { nearbyRequested });
     })
     .slice(0, 3);
 

@@ -43,6 +43,9 @@ const NAV_ITEM_ICONS = {
   map: "map",
   mypage: "person",
 };
+const NEARBY_LOCATION_PATTERN = /(내\s*)?(주변|근처|인근|가까운|nearby|near me)/i;
+const NEARBY_FOOD_PATTERN = /(맛집|식당|음식점|밥집|restaurant|food)/i;
+
 function shouldUseOriginLocationAsCurrentLocation(currentLocation, payload) {
   if (currentLocation) return false;
   if (payload?.originSource !== "browser_geolocation") return false;
@@ -54,7 +57,11 @@ function shouldUseOriginLocationAsCurrentLocation(currentLocation, payload) {
 }
 
 function isNearbyRecommendationSeed(queryText) {
-  return String(queryText || "").trim() === "내 주변 맛집 추천";
+  const normalized = String(queryText || "").trim();
+  if (!normalized) return false;
+  if (normalized === "내 주변 맛집 추천") return true;
+
+  return NEARBY_LOCATION_PATTERN.test(normalized) && NEARBY_FOOD_PATTERN.test(normalized);
 }
 
 function canUseMaxDistancePreference(currentLocation) {

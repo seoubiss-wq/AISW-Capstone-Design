@@ -18,6 +18,8 @@ test("parses bypass-cache flags from booleans and strings", () => {
 
 test("recognizes the nearby recommendation seed query", () => {
   assert.equal(isNearbyRecommendationSeed(NEARBY_RECOMMENDATION_SEED), true);
+  assert.equal(isNearbyRecommendationSeed("\uB0B4 \uC8FC\uBCC0 \uAC00\uAE4C\uC6B4 \uB9DB\uC9D1 \uCD94\uCC9C"), true);
+  assert.equal(isNearbyRecommendationSeed("\uADFC\uCC98 \uB9DB\uC9D1 \uCC3E\uC544\uB2EC\uB77C"), true);
   assert.equal(isNearbyRecommendationSeed("\uAC15\uB0A8 \uB9DB\uC9D1 \uCD94\uCC9C"), false);
 });
 

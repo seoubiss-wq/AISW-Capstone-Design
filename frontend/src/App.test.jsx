@@ -102,6 +102,8 @@ test("does not promote IP fallback coordinates to the current location", () => {
 
 test("recognizes the default nearby recommendation seed query", () => {
   expect(isNearbyRecommendationSeed("내 주변 맛집 추천")).toBe(true);
+  expect(isNearbyRecommendationSeed("내 주변 가까운 맛집 추천")).toBe(true);
+  expect(isNearbyRecommendationSeed("근처 맛집 찾아달라")).toBe(true);
   expect(isNearbyRecommendationSeed("강남 맛집 추천")).toBe(false);
 });
 
@@ -209,6 +211,18 @@ test("adds the bypass-cache flag for nearby recommendation requests", () => {
     }),
   ).toEqual({
     input: "\uB0B4 \uC8FC\uBCC0 \uB9DB\uC9D1 \uCD94\uCC9C",
+    currentLocation: { lat: 37.5665, lng: 126.978 },
+    bypassCache: true,
+  });
+
+  expect(
+    buildRecommendationRequestBody({
+      input: "\uADFC\uCC98 \uB9DB\uC9D1 \uCC3E\uC544\uB2EC\uB77C",
+      currentLocation: { lat: 37.5665, lng: 126.978 },
+      targetView: "recommend",
+    }),
+  ).toEqual({
+    input: "\uADFC\uCC98 \uB9DB\uC9D1 \uCC3E\uC544\uB2EC\uB77C",
     currentLocation: { lat: 37.5665, lng: 126.978 },
     bypassCache: true,
   });
